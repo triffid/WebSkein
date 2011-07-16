@@ -391,14 +391,15 @@ function lines_to_paths(lines, fudge) {
 					var p2 = cl[1];										// end of found segment
 				
 					// check for collinearity
-					var line = $L(p0, p1.subtract(p0));
+					var s1 = p1.subtract(p0);
+					var s2 = p2.subtract(p1);
 					
 					// check for very short runs
 					var d0 = p1.distanceFrom(p0);
 					var d1 = p2.distanceFrom(p1);
 	
 					if (
-						(line.distanceFrom(p2) < collinear_distance.value) ||	// co-linear (new point is on same line as previous segment)
+						(s1.angleFrom(s2) < collinear_distance.value) ||		// co-linear (new point is on same line as previous segment)
 						(d0 < min_length.value) ||														// segment will be too short
 						((d0 + d1) <= combine_length.value) ||								// two consecutive short segments
 						0) {
@@ -427,14 +428,15 @@ function lines_to_paths(lines, fudge) {
 							}
 						
 							// check for collinearity
-							var line = $L(p0, p1.subtract(p0));
+							var s1 = p1.subtract(p0);
+							var s2 = p2.subtract(p1);
 							
 							// check for very short runs
 							var d0 = p1.distanceFrom(p0);
 							var d1 = p2.distanceFrom(p1);
 			
 							if (
-								(line.distanceFrom(p2) < collinear_distance.value) ||
+								(s1.angleFrom(s2) < collinear_distance.value) ||
 								(d0 < min_length.value) ||
 								((d0 + d1) <= combine_length.value) ||
 								0) {
@@ -556,7 +558,7 @@ function shrinkPath(path, distance) {
 		if (a < 0)
 			a += Math.PI * 2;
 
-		if (a < 45) {
+		if ((a < Math.PI / 2) || (a > Math.PI - 0.1 && a < Math.PI + 0.1)) {
 			// this algorithm breaks on corners where inner theta < 90
 			// it requires us to find overlaps and eliminate the extraneous loops
 			var n3 = n1.add(n2);
@@ -567,6 +569,7 @@ function shrinkPath(path, distance) {
 		}
 		else {
 			// this algorithm never makes loops, but may go 'outside the lines' at acute corners
+			// this algorithm barfs on collinear points that make it through the optimiser
 			n1 = $V([n1.e(1),n1.e(2)]).multiply(-distance);
 			n2 = $V([n2.e(1),n2.e(2)]).multiply(-distance);
 			
@@ -723,17 +726,17 @@ function pointInfo(x, y) {
 		var p1 = cl;
 		var p2 = path[p2i];
 		
-		description += "Next (blue): [" + p2i + "] = [" + p2.e(1) + "," + p2.e(2) + "]\n";
-		description += "Previous (orange): [" + p0i + "] = [" + p0.e(1) + "," + p0.e(2) + "]\n";
-		
 		var s1 = p1.subtract(p0);
 		var s2 = p2.subtract(p1);
+		
+		description += "Next (blue): [" + p2i + "] = [" + p2.e(1).toFixed(2) + "," + p2.e(2).toFixed(2) + "] (" + s2.modulus() + ")\n";
+		description += "Previous (orange): [" + p0i + "] = [" + p0.e(1).toFixed(2) + "," + p0.e(2).toFixed(2) + "] (" + s1.modulus() + ")\n";
 		
 		var a = Math.atan2(s2.e(2), s2.e(1)) - Math.atan2(-s1.e(2), -s1.e(1));
 		if (a < 0)
 			a += Math.PI * 2;
 		
-		description += "Angle: " + (a * 180 / Math.PI) + " degrees\n";
+		description += "Angle: " + (a * 180 / Math.PI).toFixed(2) + " degrees\n";
 
 		var context = skeincanvas.getContext('2d');
 		
