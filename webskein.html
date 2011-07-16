@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>WebSkein</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<script type="text/javascript" src="webskein.js"></script>
+		<script type="text/javascript" src="sylvester/sylvester.src.js"></script>
+		<script type="text/javascript" src="jsc3d.js"></script>
+		<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/prototype/1.7.0.0/prototype.js"></script>
+		<style type="text/css">
+			input, textarea {
+				margin: 0 0.1em;
+				padding: 0 0.1em;
+				border: 1px solid #CCF;
+				color: black;
+				background-color: white;
+			}
+			input[type=text] {
+				width: 2.5em;
+			}
+			input[type=button] {
+				border: 1px outset #CCF;
+			}
+			input[type=text].long {
+				width: 80%;
+			}
+			.settings {
+				white-space: nowrap;
+				width: 100%;
+				clear: both;
+				border-bottom: 1px solid #DDD;
+				height: 1.3em;
+			}
+			.settings .label {
+				float: left;
+			}
+			.settings .field {
+				float: right;
+				width: 5em;
+			}
+			.settings .field input {
+				width: 2.5em;
+			}
+			#apply_btn {
+				clear: both;
+				float: right;
+				text-align: center;
+				width: 5em;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>WebSkein</h1>
+		<div style="width: 455px; padding: 0; margin: 0; float: left;">
+			<form id="skeinform" action="" method="get">
+				<input id="stl_uri" class="long" type="file" size="35" value="x-end-motor_M6.stl" />
+			</form>
+			<canvas id="stlview" style="border: 1px inset;" width="450" height="337"></canvas>
+		</div>
+		<form id="settingsform" action="">
+			<div style="width: 455px; padding: 0; margin: 0; float: left;">
+				<input id="slice_btn" type="button" value="Skein Model" style="width: 7em;" /><input id="stop_btn" type="button" value="Stop" style="color: red; margin-right: 0.5em;" />
+				<span style="white-space: nowrap;">Layer <input id="layer_txt" type="text" size="4" value="0" /> of <input id="layer_count_txt" type="text" size="4" value="" /></span>
+				<input id="slice_layer_btn" type="button" value="Slice" />
+				<input id="draw_layer_btn" type="button" value="Draw" />
+				<canvas id="sliceview" style="border: 1px inset;" width="450" height="337"></canvas>
+			</div>
+			<div style="width: 300px; padding: 0; margin: 0; float: left;">
+				<div class="settings"><span class="label">Layer Height</span><span class="field"><input id="layer_height_txt" type="text" value="0.3" />mm</span></div>
+				<div class="settings"><span class="label">Segment Collinear Distance</span><span class="field"><input id="collinear_distance_txt" type="text" value="0.15" />mm</span></div>
+				<div class="settings"><span class="label">Segment Combine Length</span><span class="field"><input id="combine_length_txt" type="text" value="0.5" />mm</span></div>
+				<div class="settings"><span class="label">Mininum Segment Length</span><span class="field"><input id="min_length_txt" type="text" value="0.4" />mm</span></div>
+				
+				<input id="apply_btn" type="button" value="Apply" />
+			</div>
+			<textarea id="debug" rows="10" cols="81" style="width: 100%;"></textarea>
+		</form>
+		<script type="text/javascript">
+			var slice_btn = $('slice_btn');
+			var stl_uri = $('stl_uri');
+			var stop_btn = $('stop_btn');
+			var slice_layer_btn = $('slice_layer_btn');
+			var draw_layer_btn = $('draw_layer_btn');
+			var apply_btn = $('apply_btn');
+			var debug = $('debug');
+			var getopt = [];
+			var getopt_hash = [];
+			
+			var reader = new FileReader();
+			var stloader;
+			
+			function gotstl(e) {
+				try {
+					var stloader = e.element().stloader;
+					//debugWrite(dump(e.element()));
+					var scene = new JSC3D.Scene();
+					debugWrite(" OK. Parsing...");
+					stloader.parseStl(scene, e.element().result);
+					viewer.afterupdate = checkModel;
+					viewer.replaceScene(scene);
+					viewer.update();
+				}
+				catch (err) {
+					// debugWrite(dump(e) + '\n');
+					alert(err);
+				}
+			}
+			
+			reader.onload = gotstl;
+			
+			document.observe("dom:loaded", function() {
+				stloader = new JSC3D.StlLoader();
+				reader.stloader = stloader;
+				
+				stl_uri.clear();
+				
+				stl_uri.observe("change", function(e) {
+					var f = e.element().files[0];
+					if (f) {
+						debugWrite("Loading " + f.name + "...");
+						var sMimeType = f.type;
+						reader.readAsBinaryString(f);
+					}
+				});
+				
+				slice_btn.disabled = true;
+				slice_btn.reset = function() {
+					this.disabled = false;
+					this.value = "Skein Model";
+				}
+				slice_btn.onclick = function() {
+					try {
+						this.disabled = true;
+						this.value = "Skein";
+						sliceModel();
+					}
+					catch (err) {
+						this.reset()
+					}
+					return false;
+				};
+				stop_btn.onclick = function() {
+					window.clearTimeout(sliceTimer);
+					slice_btn.reset();
+				};
+				
+				slice_layer_btn.onclick = function() {
+					calcLayers();
+					updateHash();
+					sliceLayer();
+					drawLayer(layerNum);
+				}
+				
+				draw_layer_btn.onclick = function() {
+					calcLayers();
+					drawLayer(layerNum);
+				}
+				
+				apply_btn.onclick = function() {
+					checkModel();
+					updateHash();
+				}
+				
+			});
+			
+			function updateHash() {
+				window.location.hash =
+					"lh=" + layerHeight +
+					",scd=" + $('collinear_distance_txt').value +
+					",scl=" + $('combine_length_txt').value + 
+					",msl=" + $('min_length_txt').value + 
+					",l=" + layerNum
+					;
+			}
+			
+			function debugWrite(data) {
+				debug.value += data;
+				debug.scrollTop = debug.scrollHeight;
+			}
+			
+			window.onload = function() {
+				debug.value = '';
+				if (window.location.search.length > 1) {
+					var iCouple, aCouples = window.location.search.substr(1).split("&");
+					for (var iCouplId = 0; iCouplId < aCouples.length; iCouplId++) { //>
+						iCouple = aCouples[iCouplId].split("=");
+						getopt[unescape(iCouple[0]).toLowerCase()] = iCouple.length > 1 ? unescape(iCouple[1]) : null;
+					}
+				}
+				
+				if (window.location.hash.length > 1) {
+					var lh = window.location.hash.match(/lh=(-?[\d\.]+)/i);
+					if (lh) {
+						layerHeight = lh[1];
+						$('layer_height_txt').value = layerHeight;
+					}
+					
+					var scd = window.location.hash.match(/scd=(-?[\d\.]+)/i);
+					if (scd)
+						$('collinear_distance_txt').value = scd[1];
+						
+					var scl = window.location.hash.match(/scl=(-?[\d\.]+)/i);
+					if (scl)
+						$('combine_length_txt').value = scl[1];
+						
+					var msl = window.location.hash.match(/msl=(-?[\d\.]+)/i);
+					if (msl)
+						$('min_length_txt').value = msl[1];
+				}
+				
+				if (getopt['stl']) {
+					stl_uri.value = getopt['stl'];
+				}
+				
+				canvasInit();				
+				// canvasLoadSTL(stl_uri.value);
+			}
+		</script>
+	</body>
+</html>
