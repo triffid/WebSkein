@@ -530,8 +530,8 @@ function shrinkPath(path, distance) {
 		var s2 = p2.subtract(p1);
 		
 		// normals for our segments
-		var n1 = $V([s1.e(1), s1.e(2), 0]).cross($V([0, 0, -1]));
-		var n2 = $V([s2.e(1), s2.e(2), 0]).cross($V([0, 0, -1]));
+		var n1 = $V([s1.e(1), s1.e(2), 0]).cross($V([0, 0, -1])).toUnitVector();
+		var n2 = $V([s2.e(1), s2.e(2), 0]).cross($V([0, 0, -1])).toUnitVector();
 		
 		var n3 = n1.add(n2);
 		
