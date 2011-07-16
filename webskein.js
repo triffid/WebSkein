@@ -11,10 +11,14 @@
 
 var canvas;
 var viewer;
-var triangles = new Array();
-var layers = new Array();
+
+var triangles = [];
+var layers = [];
+var lines = [];
 var boundingBox = [];
+
 var sliceTimer;
+
 var layerHeight = 0.3;
 var layerNum = 0;
 var layerCount = 0;
@@ -211,13 +215,22 @@ function sliceLayer() {
 	
 	// simplest solid model (tetrahedron) has 4 faces, 3 vertexes per face so anything with less than 12 isn't a solid object
 	if (triangles.length >= 12) {
-		// alert('Size is ' + (boundingBox[1].e(1) - boundingBox[0].e(1)) + 'mm x ' + (boundingBox[1].e(2) - boundingBox[0].e(2)) + 'mm x ' + (boundingBox[1].e(3) - boundingBox[0].e(3)) + 'mm');
-		// alert(triangles.length + ' triangles');
-		// so now we have triangles, which is an array of arrays of 4 vectors (3 points and a normal)
+		var fudgeFactor = 0;
 		
-		var sliceplane = $P($V([0, 0, (layerHeight * layerNum) + (layerHeight * 0.5) + boundingBox[0].e(3)]), $V([0, 0, 1]));
-		var lines = new Array();
+		// accept a fudge factor
+		if (arguments[0])
+			fudgeFactor = parseFloat(arguments[0]);
 		
+		// translate layerNum into an actual Z-value
+		var planeHeight = (layerHeight * layerNum) + (layerHeight * 0.5) + boundingBox[0].e(3) + fudgeFactor;
+		
+		// create slice plane
+		var sliceplane = $P($V([0, 0, planeHeight]), $V([0, 0, 1]));
+		
+		// empty lines
+		lines = new Array();
+		
+		// find intersecting triangles
 		for (var t = 0; t < triangles.length; t++) { //>
 			triangle = triangles[t];
 			var points = new Array();
@@ -268,14 +281,12 @@ function sliceLayer() {
 						n
 						]);
 				}
-				// lines.push(points);
-				// debug.value += '[' + t + ']{' + [points[0].elements.join(','), points[1].elements.join(',')].join('}{') + '}\n';
 			}
 		}
 		
 		debugWrite(' ' + lines.length + ' segments...');
 		
-		lines_to_paths(lines);
+		lines_to_paths(lines, fudgeFactor);
 
 		debugWrite(' OK\n');
 	}
@@ -284,7 +295,7 @@ function sliceLayer() {
 // takes a random collection of segments and creates one or more paths
 // since our lines' endpoints are in a specific winding order we can assume that p[1] connects to the next segment's p[0]
 // TODO: join collinear segments while we're at it
-function lines_to_paths(lines) {
+function lines_to_paths(lines, fudge) {
 	var paths = new Array;
 	var cl; 		// current segment
 	var path;		// path under construction
@@ -386,7 +397,9 @@ function lines_to_paths(lines) {
 	}
 	
 	if (lines.length) {
-		debugWrite(lines.length + ' lines found without a closed path! Try a different layer thickness, a mere +/-0.001 may do it\n');
+		fudge += layerHeight * 0.01;
+		debugWrite(lines.length + ' lines found without a closed path! Trying reslice with layer offset +' + fudge + '... ');
+		return sliceLayer(fudge);
 	}
 	
 	debugWrite(" " + paths.length + " paths...");
