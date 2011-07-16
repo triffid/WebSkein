@@ -349,36 +349,40 @@ function lines_to_paths(lines, fudge) {
 				if (cl[1].eql(path[0])) {
 					// path is closed
 					
-					if (1) {
-						// try to combine last segment with first
-						var p0 = path[path.length - 1];
-						var p1 = path[0];
-						var p2 = path[1];
-					
-						// check for collinearity
-						var line = $L(p0, p1.subtract(p0));
+					if (path.length > 3) {
+						if (1) {
+							// try to combine last segment with first
+							var p0 = path[path.length - 1];
+							var p1 = path[0];
+							var p2 = path[1];
 						
-						// check for very short runs
-						var d0 = p1.distanceFrom(p0);
-						var d1 = p2.distanceFrom(p1);
-		
-						if (
-							(line.distanceFrom(p2) < getFloat('collinear_distance_txt', 0.15)) ||
-							((d0 + d1) <= getFloat('combine_length_txt', 0.5)) ||
-							(d0 < getFloat('min_length_txt', 0.4))
-							) {
-							// previous segment and this one are collinear or very short! combine!
-							path[0] = p0;
-							path.pop;
+							// check for collinearity
+							var line = $L(p0, p1.subtract(p0));
+							
+							// check for very short runs
+							var d0 = p1.distanceFrom(p0);
+							var d1 = p2.distanceFrom(p1);
+			
+							if (
+								(line.distanceFrom(p2) < getFloat('collinear_distance_txt', 0.15)) ||
+								((d0 + d1) <= getFloat('combine_length_txt', 0.5)) ||
+								(d0 < getFloat('min_length_txt', 0.4))
+								) {
+								// previous segment and this one are collinear or very short! combine!
+								path[0] = p0;
+								path.pop;
+							}
+						}
+						
+						paths.push(path.slice(0, path.length));
+						if (lines.length) {
+							cl = lines.splice(0, 1)[0];
+							path = [cl[0]];
+							fp = cl[1];
 						}
 					}
-					
-					paths.push(path.slice(0, path.length));
-					if (lines.length) {
-						cl = lines.splice(0, 1)[0];
-						path = [cl[0]];
-						fp = cl[1];
-					}
+					else
+						debugWrite("Closed Path with only " + path.length + " points found! discarding. ");
 				}
 				i = 0;
 			}
