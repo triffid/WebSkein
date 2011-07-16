@@ -185,6 +185,7 @@
 					",scd=" + collinear_distance.value +
 					",scl=" + combine_length.value +
 					",msl=" + min_length.value +
+					",wot=" + wot.value +
 					"";
 			}
 			
@@ -220,6 +221,10 @@
 					var msl = window.location.hash.match(/msl=(-?[\d\.]+)/i);
 					if (msl)
 						min_length.set(msl[1]);
+						
+					var wot = window.location.hash.match(/wot=(-?[\d\.]+)/i);
+					if (wot)
+						wot.set(wot[1]);
 				}
 				
 				//if (getopt['stl']) {
