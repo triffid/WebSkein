@@ -23,6 +23,8 @@ var layerHeight = 0.3;
 var layerNum = 0;
 var layerCount = 0;
 
+
+
 function dump(arr,level) {
 	var dumped_text = "";
 	if(!level) level = 0;
@@ -112,6 +114,8 @@ function canvasLoadSTL(stl_uri) {
 	viewer.afterupdate = checkModel;
 }
 
+// calculate number of layers from bounding box and layer height
+// read, sanity check and update layer input boxes
 function calcLayers() {
 	layerHeight = getFloat('layer_height_txt', 0.3);
 	layerNum = getInt('layer_txt', 0);
@@ -137,13 +141,15 @@ function calcLayers() {
 	$('layer_txt').value = layerNum;
 }
 
+// read the list of triangles from jsc3d
+// stored as 4 vectors- 3 points and a normal
 function jsc3d_to_sylvester() {
 	var mesh = viewer.scene.children[0];
 
 	boundingBox = [$V([viewer.scene.aabb.minX, viewer.scene.aabb.minY, viewer.scene.aabb.minZ]), $V([viewer.scene.aabb.maxX, viewer.scene.aabb.maxY, viewer.scene.aabb.maxZ])];
 	triangles = new Array();
 
-	// following code mostly chopped from jsc3d.js:JSC3D.Mesh.prototype.calcFaceNormals()
+	// following code mostly chopped from jsc3d.js:JSC3D.Mesh.prototype.calcFaceNormals() with relevant alterations
 	var vbuf = mesh.vertexBuffer;
 	var ibuf = mesh.indexBuffer;
 	var nbuf = mesh.faceNormalBuffer;
@@ -171,8 +177,6 @@ function jsc3d_to_sylvester() {
 			$V([nbuf[j], nbuf[j+1], nbuf[j+2]]).toUnitVector()	// normal
 			]);
 			
-		// debug.value += '[' + (j / 3) + ']{' + [[x0,y0,z0].join(','),[x1,y1,z1].join(','),[x2,y2,z2].join(',')].join('}{') + '}\n';
-			
 		j += 3;
 		do { } while (ibuf[i++] != -1);
 	}
@@ -180,26 +184,32 @@ function jsc3d_to_sylvester() {
 	return triangles.length;
 }
 
+// basic linear interpolation routine
 function linearInterpolate(value, oldmin, oldmax, newmin, newmax) {
 	return (value - oldmin) * (newmax - newmin) / (oldmax - oldmin) + newmin;
 }
 
+// slice the whole model, one layer at a time
 function sliceModel() {
 	calcLayers();
 	
-	layerNum = -1;
+	layerNum = layerCount;
 	$('layer_txt').value = layerNum;
 	
 	sliceTimer = setTimeout(slice_nextLayer, 100);
 }
 
+// proceed to the next layer when slicing a whole model
 function slice_nextLayer() {
-	if (layerNum < getInt('layer_count_txt', 0)) {
-		layerNum++;
+	sliceLayer();
+	drawLayer(layerNum);
+	layerNum--;
+	if (layerNum >= 0) {
 		$('layer_txt').value = layerNum;
-		sliceLayer();
-		drawLayer(layerNum);
 		sliceTimer = setTimeout(slice_nextLayer, 100);
+	}
+	else {
+		layerNum = 0;
 	}
 }
 
@@ -213,11 +223,11 @@ function slice_nextLayer() {
 function sliceLayer() {
 	debugWrite('Slicing layer ' + layerNum + '...');
 	
-	// simplest solid model (tetrahedron) has 4 faces, 3 vertexes per face so anything with less than 12 isn't a solid object
-	if (triangles.length >= 12) {
-		var fudgeFactor = 0;
+	// simplest solid model (tetrahedron) has 4 faces, so anything with less isn't a solid object
+	if (triangles.length >= 4) {
 		
 		// accept a fudge factor
+		var fudgeFactor = 0;
 		if (arguments[0])
 			fudgeFactor = parseFloat(arguments[0]);
 		
@@ -302,7 +312,7 @@ function lines_to_paths(lines, fudge) {
 	var fp;			// find point
 	var i = 0, j = 0, k = 0;
 	
-	for (k = 0; (k < 10) && (lines.length > 0); k++) {
+	for (k = 0; (k < 3) && (lines.length > 0); k++) {
 		if (k > 0) {
 			debugWrite(' (try ' + (k + 1) + ' finding paths)');
 		}
