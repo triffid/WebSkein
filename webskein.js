@@ -495,11 +495,6 @@ function shrinkPath(path, distance) {
 }
 
 function drawPath(path, colour) {
-	path.push(path[0]);
-	
-	var skeincanvas = $('sliceview');
-	var context = skeincanvas.getContext('2d');
-
 	var modelWidth = (boundingBox[1].e(1) - boundingBox[0].e(1));
 	var modelHeight = (boundingBox[1].e(2) - boundingBox[0].e(2));
 	
@@ -507,6 +502,8 @@ function drawPath(path, colour) {
 	var bottom;
 	var left;
 	var right;
+
+	var skeincanvas = $('sliceview');
 
 	if ((modelWidth / modelHeight) > (skeincanvas.width / skeincanvas.height)) {
 		// model limited by width, cull heights
@@ -536,16 +533,20 @@ function drawPath(path, colour) {
 		return linearInterpolate(y,  boundingBox[0].e(2), boundingBox[1].e(2), top, bottom);
 	}
 	
+	var context = skeincanvas.getContext('2d');
+
 	context.strokeStyle = 'rgb(' + colour.join(',') + ')';
 	context.lineWidth = 1;
 	context.beginPath();
 	
+	path.push(path[0]);	
 	for (var i = 0; i < path.length; i++) {
 		var point = path[i];
 		var x = xscale(point.e(1));
 		var y = yscale(point.e(2));
 		context.lineTo(x, y);
-	}	
+	}
+	path.pop();
 	
 	context.stroke();		
 
@@ -553,40 +554,44 @@ function drawPath(path, colour) {
 
 	context.strokeStyle = 'rgba(' + colour.join(',') + ',0.25)';
 	context.beginPath();
+	
+	path.push(path[0]);	
 	for (var i = 1; i < path.length; i++) {
-		var vl = 6; // normal tick length
+		var vl = 1; // normal tick length, millimeters
 		var p0 = path[i - 1];
 		var p1 = path[i];
-		var n = $V([p0.e(1) - p1.e(1), p0.e(2) - p1.e(2), 0]).cross($V([0, 0, 1])).toUnitVector();
-		var x = xscale((p0.e(1) + p1.e(1)) / 2);
-		var y = yscale((p0.e(2) + p1.e(2)) / 2);
-		context.moveTo(x, y);
-		context.lineTo(x + (n.e(1) * vl), y + (n.e(2) * vl));
+		var n = $V([p0.e(1) - p1.e(1), p0.e(2) - p1.e(2), 0]).cross($V([0, 0, 1])).toUnitVector().multiply(vl);
+		var x = (p0.e(1) + p1.e(1)) / 2;
+		var y = (p0.e(2) + p1.e(2)) / 2;
+		context.moveTo(xscale(x), yscale(y));
+		context.lineTo(xscale(x + n.e(1)), yscale(y + n.e(2)));
 	}	
+	path.pop();
+	
 	context.stroke();		
 	
 	if (1) {
 		var sl = 4;																										// start vector length
 		var al = 2;																										// arrow length
 		var aa = 0.85;																								// arrow angle (2 = full rotation)
-		var r = 2;																										// startpoint circle radius
+		var r  = 2;																										// startpoint circle radius
 		var p0 = path[0];																							// first point
 		var p1 = path[1];																							// second point
-		var v = p1.subtract(p0).toUnitVector();												// start vector
-		var a1 = v.rotate(Math.PI * aa, $V([0, 0])).toUnitVector();		// arrow arm 1
-		var a2 = v.rotate(Math.PI * -aa, $V([0, 0])).toUnitVector();	// arrow arm 2
-		var x1 = xscale(p0.e(1));																			// start point
-		var y1 = yscale(p0.e(2));
-		var x2 = xscale(p0.e(1) + (v.e(1) * sl));											// start point + start vector
-		var y2 = yscale(p0.e(2) + (v.e(2) * sl));
+		var v  = p1.subtract(p0).toUnitVector().multiply(sl);					// start vector
+		var a1 = v.rotate(Math.PI *  aa, $V([0, 0])).toUnitVector().multiply(al);	// arrow arm 1
+		var a2 = v.rotate(Math.PI * -aa, $V([0, 0])).toUnitVector().multiply(al);	// arrow arm 2
+		var x1 = p0.e(1);																							// start point
+		var y1 = p0.e(2);
+		var x2 = p0.e(1) + v.e(1);																		// start point + start vector
+		var y2 = p0.e(2) + v.e(2);
 
 		// now draw path entry point and direction vector
 		context.strokeStyle = 'rgba(' + colour.join(',') + ',0.5)';
 		context.lineWidth = 2;
 		context.beginPath();
-		context.arc(x1, y1, r, 0, Math.PI * 2, true);
-		context.moveTo(x1, y1);
-		context.lineTo(x2, y2);
+		context.arc(xscale(x1), yscale(y1), r, 0, Math.PI * 2, true);
+		context.moveTo(xscale(x1), yscale(y1));
+		context.lineTo(xscale(x2), yscale(y2));
 		context.stroke();
 
 		if (1) {		
@@ -594,10 +599,10 @@ function drawPath(path, colour) {
 			context.strokeStyle = 'rgba(' + colour.join(',') + ',0.5)';
 			context.lineWidth = 0.75;
 			context.beginPath();
-			context.moveTo(x2, y2);
-			context.lineTo(xscale(p0.e(1) + (v.e(1) * sl) + (a1.e(1) * al)), yscale(p0.e(2) + (v.e(2) * sl) + (a1.e(2) * al)));
-			context.lineTo(xscale(p0.e(1) + (v.e(1) * sl) + (a2.e(1) * al)), yscale(p0.e(2) + (v.e(2) * sl) + (a2.e(2) * al)));
-			context.lineTo(x2, y2);
+			context.moveTo(xscale(x2), yscale(y2));
+			context.lineTo(xscale(x2 + a1.e(1)), yscale(y2 + a1.e(2)));
+			context.lineTo(xscale(x2 + a2.e(1)), yscale(y2 + a2.e(2)));
+			context.lineTo(xscale(x2), yscale(y2));
 			context.stroke();
 		}
 	}
