@@ -7,6 +7,7 @@
 		<script type="text/javascript" src="sylvester/sylvester.src.js"></script>
 		<script type="text/javascript" src="jsc3d.js"></script>
 		<script type="text/javascript" src="prototype.js"></script>
+		<script type="text/javascript" src="boundvalue.js"></script>
 		<style type="text/css">
 			input, textarea {
 				margin: 0 0.1em;
@@ -60,16 +61,20 @@
 		<form id="settingsform" action="">
 			<div style="width: 455px; padding: 0; margin: 0; float: left;">
 				<input id="slice_btn" type="button" value="Skein Model" style="width: 7em;" /><input id="stop_btn" type="button" value="Stop" style="color: red; margin-right: 0.5em;" />
-				<span style="white-space: nowrap;">Layer <input id="layer_txt" type="text" size="4" value="0" /> of <input id="layer_count_txt" type="text" size="4" value="" /></span>
+				<span style="white-space: nowrap;">Layer <input id="layer_txt" type="text" size="4" value="0" /> of <input id="layer_count_txt" type="text" size="4" value="" readonly="readonly" /></span>
 				<input id="slice_layer_btn" type="button" value="Slice" />
 				<input id="draw_layer_btn" type="button" value="Draw" />
 				<canvas id="sliceview" style="border: 1px inset;" width="450" height="337"></canvas>
 			</div>
 			<div style="width: 300px; padding: 0; margin: 0; float: left;">
 				<div class="settings"><span class="label">Layer Height</span><span class="field"><input id="layer_height_txt" type="text" value="0.3" />mm</span></div>
+				<hr>
 				<div class="settings"><span class="label">Segment Collinear Distance</span><span class="field"><input id="collinear_distance_txt" type="text" value="0.15" />mm</span></div>
 				<div class="settings"><span class="label">Segment Combine Length</span><span class="field"><input id="combine_length_txt" type="text" value="0.5" />mm</span></div>
 				<div class="settings"><span class="label">Mininum Segment Length</span><span class="field"><input id="min_length_txt" type="text" value="0.4" />mm</span></div>
+				<hr>
+				<div class="settings"><span class="label">Width over Thickness</span><span class="field"><input id="wot_txt" type="text" value="1.6" />:1</span></div>
+				
 				
 				<input id="apply_btn" type="button" value="Apply" />
 			</div>
@@ -82,12 +87,23 @@
 			var slice_layer_btn = $('slice_layer_btn');
 			var draw_layer_btn = $('draw_layer_btn');
 			var apply_btn = $('apply_btn');
+			
 			var debug = $('debug');
+			
 			var getopt = [];
 			var getopt_hash = [];
 			
 			var reader = new FileReader();
 			var stloader;
+
+			var layer = new boundValue('layer_txt', 0, 0, undefined, true);
+			var layer_height = new boundValue('layer_height_txt', 0.3, 0.05);
+			var layer_count = new boundValue('layer_count_txt', 0, 0, undefined, true);
+			
+			var collinear_distance = new boundValue('collinear_distance_txt', 0.065, 0);
+			var combine_length = new boundValue('combine_length_txt', 0.5, 0);
+			var min_length = new boundValue('min_length_txt', 0.4, 0);
+			var wot = new boundValue('wot_txt', 1.6, 0.2);
 			
 			function gotstl(e) {
 				try {
@@ -148,12 +164,12 @@
 					calcLayers();
 					updateHash();
 					sliceLayer();
-					drawLayer(layerNum);
+					drawLayer(layer.value);
 				}
 				
 				draw_layer_btn.onclick = function() {
 					calcLayers();
-					drawLayer(layerNum);
+					drawLayer(layer.value);
 				}
 				
 				apply_btn.onclick = function() {
@@ -165,10 +181,10 @@
 			
 			function updateHash() {
 				window.location.hash =
-					"lh=" + layerHeight +
-					",scd=" + $('collinear_distance_txt').value +
-					",scl=" + $('combine_length_txt').value +
-					",msl=" + $('min_length_txt').value +
+					"lh=" + layer_height.value +
+					",scd=" + collinear_distance.value +
+					",scl=" + combine_length.value +
+					",msl=" + min_length.value +
 					"";
 			}
 			
@@ -190,26 +206,25 @@
 				if (window.location.hash.length > 1) {
 					var lh = window.location.hash.match(/lh=(-?[\d\.]+)/i);
 					if (lh) {
-						layerHeight = lh[1];
-						$('layer_height_txt').value = layerHeight;
+						layer_height.set(lh[1]);
 					}
 					
 					var scd = window.location.hash.match(/scd=(-?[\d\.]+)/i);
 					if (scd)
-						$('collinear_distance_txt').value = scd[1];
+						collinear_distance.set(scd[1]);
 						
 					var scl = window.location.hash.match(/scl=(-?[\d\.]+)/i);
 					if (scl)
-						$('combine_length_txt').value = scl[1];
+						combine_length.set(scl[1]);
 						
 					var msl = window.location.hash.match(/msl=(-?[\d\.]+)/i);
 					if (msl)
-						$('min_length_txt').value = msl[1];
+						min_length.set(msl[1]);
 				}
 				
-				if (getopt['stl']) {
-					stl_uri.value = getopt['stl'];
-				}
+				//if (getopt['stl']) {
+				//	stl_uri.value = getopt['stl'];
+				//}
 				
 				canvasInit();				
 				// canvasLoadSTL(stl_uri.value);

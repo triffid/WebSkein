@@ -19,11 +19,7 @@ var boundingBox = [];
 
 var sliceTimer;
 
-var layerHeight = 0.3;
-var layerNum = 0;
-var layerCount = 0;
-
-
+var extrusionWidth = 0.5;
 
 function dump(arr,level) {
 	var dumped_text = "";
@@ -115,30 +111,23 @@ function canvasLoadSTL(stl_uri) {
 }
 
 // calculate number of layers from bounding box and layer height
-// read, sanity check and update layer input boxes
+// update layer-related input boxes
 function calcLayers() {
-	layerHeight = getFloat('layer_height_txt', 0.3);
-	layerNum = getInt('layer_txt', 0);
+	var count = 0;
 	
-	if (layerHeight < 0.05) {
-		layerHeight = 0.05;
-		$('layer_height_txt').value = layerHeight;
-	}
-
 	if (viewer.scene.children[0]) {
 		var mesh = viewer.scene.children[0];
-		layerCount = Math.floor((mesh.aabb.maxZ - mesh.aabb.minZ - (layerHeight / 2)) / layerHeight);
-		$('layer_count_txt').value = layerCount;
+		count = Math.floor((mesh.aabb.maxZ - mesh.aabb.minZ - (layer_height.value / 2)) / layer_height.value);
  	}
 	else {
-		layerCount = 0;
-		$('layer_count_txt').value = layerCount;
+		count = 0;
 	}
+
+	layer_count.set(count);
+	layer.setMax(count);
 	
-	if (layerNum > layerCount)
-		layerNum = layerCount;
-	
-	$('layer_txt').value = layerNum;
+	// equivalent to skeinforge WoT	
+	extrusionWidth = layer_height.value * wot.value;
 }
 
 // read the list of triangles from jsc3d
@@ -193,23 +182,22 @@ function linearInterpolate(value, oldmin, oldmax, newmin, newmax) {
 function sliceModel() {
 	calcLayers();
 	
-	layerNum = layerCount;
-	$('layer_txt').value = layerNum;
+	layer.set(layer_count.value);
 	
 	sliceTimer = setTimeout(slice_nextLayer, 100);
 }
 
 // proceed to the next layer when slicing a whole model
+// we use a timer so that the browser has time to process some UI events and doesn't appear frozen
 function slice_nextLayer() {
 	sliceLayer();
-	drawLayer(layerNum);
-	layerNum--;
-	if (layerNum >= 0) {
-		$('layer_txt').value = layerNum;
+	drawLayer(layer.value);
+	if (layer.value > 0) {
+		layer.set(layer.value - 1)
 		sliceTimer = setTimeout(slice_nextLayer, 100);
 	}
 	else {
-		layerNum = 0;
+		layer.set(0);
 	}
 }
 
@@ -221,18 +209,23 @@ function slice_nextLayer() {
 
 // take a the list of triangles and the layer height and find the intersecting segments
 function sliceLayer() {
-	debugWrite('Slicing layer ' + layerNum + '...');
+	debugWrite('Slicing layer ' + layer.value + '...');
 	
 	// simplest solid model (tetrahedron) has 4 faces, so anything with less isn't a solid object
 	if (triangles.length >= 4) {
 		
 		// accept a fudge factor
 		var fudgeFactor = 0;
-		if (arguments[0])
+		if (arguments[0]) {
 			fudgeFactor = parseFloat(arguments[0]);
+			if (fudgeFactor > (layer_height.value / 2)) {
+				debugWrite("layer offset too high, can't slice this model! aborting.\n");
+				throw "layer offset too high at Z=" + ((layer_height.value * layer.value) + (layer_height.value * 0.5) + boundingBox[0].e(3)) + " + fudge " + fudgeFactor + ", layer height " + layer_height.value;
+			}
+		}
 		
 		// translate layerNum into an actual Z-value
-		var planeHeight = (layerHeight * layerNum) + (layerHeight * 0.5) + boundingBox[0].e(3) + fudgeFactor;
+		var planeHeight = (layer_height.value * layer.value) + (layer_height.value * 0.5) + boundingBox[0].e(3) + fudgeFactor;
 		
 		// create slice plane
 		var sliceplane = $P($V([0, 0, planeHeight]), $V([0, 0, 1]));
@@ -343,12 +336,12 @@ function lines_to_paths(lines, fudge) {
 					var d1 = p2.distanceFrom(p1);
 	
 					if (
-						(line.distanceFrom(p2) < getFloat('collinear_distance_txt', 0.15)) ||
-						((d0 + d1) <= getFloat('combine_length_txt', 0.5)) ||
-						(d0 < getFloat('min_length_txt', 0.4))
-						) {
+						(line.distanceFrom(p2) < collinear_distance.value) ||	// co-linear (new point is on same line as previous segment)
+						(d0 < min_length.value) ||														// segment will be too short
+						((d0 + d1) <= combine_length.value) ||								// two consecutive short segments
+						0) {
 						// previous segment and this one are collinear or very short! combine!
-						// we combine simply by not adding p1 to the path
+						// we combine simply by not adding p1 to the path, so the next run sees p0 and p2
 					}
 					else
 						path.push(p1);
@@ -374,10 +367,10 @@ function lines_to_paths(lines, fudge) {
 							var d1 = p2.distanceFrom(p1);
 			
 							if (
-								(line.distanceFrom(p2) < getFloat('collinear_distance_txt', 0.15)) ||
-								((d0 + d1) <= getFloat('combine_length_txt', 0.5)) ||
-								(d0 < getFloat('min_length_txt', 0.4))
-								) {
+								(line.distanceFrom(p2) < collinear_distance.value) ||
+								(d0 < min_length.value) ||
+								((d0 + d1) <= combine_length.value) ||
+								0) {
 								// previous segment and this one are collinear or very short! combine!
 								path[0] = p0;
 								path.pop;
@@ -411,43 +404,94 @@ function lines_to_paths(lines, fudge) {
 	}
 	
 	if (lines.length) {
-		fudge += layerHeight * 0.01;
-		debugWrite(lines.length + ' lines found without a closed path! Trying reslice with layer offset +' + fudge + '... ');
+		fudge += layer_height.value * 0.01;
+		debugWrite(" " + lines.length + ' lines found without a closed path! Trying reslice with layer offset +' + fudge + '... ');
 		return sliceLayer(fudge);
 	}
 	
 	debugWrite(" " + paths.length + " paths...");
 	
-	layers[layerNum] = { outline: paths };
+	layers[layer.value] = { outline: paths };
+	
+	drawShell(0);
 }
 
-function drawLayer(layerNum) {
+// draw shell(s) inside the perimeter.
+// pass index of shell to draw
+function drawShell(n) {
+	var paths = layers[layer.value].outline;
+	layers[layer.value].shells = [];
+	for (var i = 0; i < paths.length; i++) {
+		var shell = shrinkPath(paths[i], (extrusionWidth * n) + (extrusionWidth / 2));
+		layers[layer.value].shells.push(shell);
+	}
+}
+
+function drawLayer(n) {
 	var skeincanvas = $('sliceview');
 	var context = skeincanvas.getContext('2d');
 	
 	context.clearRect(0, 0, skeincanvas.width, skeincanvas.height);
 	
-	var paths = layers[layerNum].outline;
+	var paths = layers[n].outline;
 	if (paths === undefined) {
 		sliceLayer();
-		paths = layers[layerNum].outline;
+		paths = layers[n].outline;
 	}
+	var shells = layers[n].shells;
 	
 	var colours = [
+			[0,0,0],
 			[255,0,0],
 			[0,255,0],
 			[0,0,255],
 			[255,255,0],
 			[255,0,255],
-			[0,255,255],
-			[0,0,0]
+			[0,255,255]
 		];
 
 	for (var j = 0; j < paths.length; j++) {
 		var path = paths[j];
-		drawPath(path, colours[j % colours.length]);
-		path.pop();
+		drawPath(path, colours[0]);
 	}	
+	for (var j = 0; j < shells.length; j++) {
+		var shell = shells[j];
+		drawPath(shell, colours[1]);
+	}
+}
+
+// this returns a new path set <distance> mm behind the supplied path.
+// NOTE: for inner paths (eg holes), this will make the path /larger/ so that the new path is inside the object
+// algorithm:
+// for each triplet of points p0, p1, p2
+// there are two segments s0(p1-p0), s1(p2-p1)
+// find a normal n = (n[s0] + n[s1]).toUnit()
+// and move the vertex p1 along this normal by negative distance.
+
+function shrinkPath(path, distance) {
+	var newpath = [];
+	for (var i = 0; i < path.length; i++) {
+		var p0 = path[(i + path.length - 1) % path.length];
+		var p1 = path[i];
+		var p2 = path[(i + 1) % path.length];
+		
+		var s1 = p1.subtract(p0);
+		var s2 = p2.subtract(p1);
+		
+		// normals for our segments
+		var n1 = $V([s1.e(1), s1.e(2), 0]).cross($V([0, 0, -1]));
+		var n2 = $V([s2.e(1), s2.e(2), 0]).cross($V([0, 0, -1]));
+		
+		var n3 = n1.add(n2);
+		
+		var n = $V([n3.e(1), n3.e(2)]).toUnitVector();
+		
+		var p = p1.add(n.multiply(-distance));
+		
+		newpath.push(p);
+	}
+	
+	return newpath;
 }
 
 function drawPath(path, colour) {
@@ -456,20 +500,40 @@ function drawPath(path, colour) {
 	var skeincanvas = $('sliceview');
 	var context = skeincanvas.getContext('2d');
 
-	var xzoom = skeincanvas.width / (boundingBox[1].elements[0] - boundingBox[0].elements[0]);
-	var yzoom = skeincanvas.heigt / (boundingBox[1].elements[1] - boundingBox[0].elements[1]);
-	var zoom = xzoom;
-	if (yzoom < zoom) //>
-		zoom = yzoom;
+	var modelWidth = (boundingBox[1].e(1) - boundingBox[0].e(1));
+	var modelHeight = (boundingBox[1].e(2) - boundingBox[0].e(2));
 	
-	xzoom = zoom * (boundingBox[1].elements[0] - boundingBox[0].elements[0]) / 4;
-	yzoom = zoom * (boundingBox[1].elements[1] - boundingBox[0].elements[1]) / 4;
+	var top;
+	var bottom;
+	var left;
+	var right;
+
+	if ((modelWidth / modelHeight) > (skeincanvas.width / skeincanvas.height)) {
+		// model limited by width, cull heights
+		left = 1;
+		right = skeincanvas.width;
+		top = (skeincanvas.height / 2) + (modelHeight * skeincanvas.width / modelWidth / 2);
+		bottom = (skeincanvas.height / 2) - (modelHeight * skeincanvas.width / modelWidth / 2);
+	}
+	else {
+		// model limited by height
+		top = 1;
+		bottom = skeincanvas.height;
+		left = (skeincanvas.width / 2) - (modelWidth * skeincanvas.height / modelHeight / 2);
+		right = (skeincanvas.width / 2) + (modelWidth * skeincanvas.height / modelHeight / 2);
+	}
+	
+	debugWrite("mapping [" + boundingBox[0].e(1) + "," + boundingBox[0].e(2) + "]-[" + boundingBox[1].e(1) + "," + boundingBox[1].e(2) + 
+							"] onto [" + left + "," + right + "]-[" + top + "," + bottom + "]\n");
+	
+	// xzoom = zoom * (boundingBox[1].e(1) - boundingBox[0].e(1)) / 4;
+	// yzoom = zoom * (boundingBox[1].e(2) - boundingBox[0].e(2)) / 4;
 	
 	function xscale(x) {
-		return linearInterpolate(x,  boundingBox[0].elements[0], boundingBox[1].elements[0], (skeincanvas.width / 2)  - xzoom, (skeincanvas.width / 2)  + xzoom);	
+		return linearInterpolate(x,  boundingBox[0].e(1), boundingBox[1].e(1), left, right);
 	}
 	function yscale(y) {
-		return linearInterpolate(y,  boundingBox[0].elements[1], boundingBox[1].elements[1], (skeincanvas.height / 2) - yzoom, (skeincanvas.height / 2) + yzoom);
+		return linearInterpolate(y,  boundingBox[0].e(2), boundingBox[1].e(2), top, bottom);
 	}
 	
 	context.strokeStyle = 'rgb(' + colour.join(',') + ')';
@@ -506,8 +570,8 @@ function drawPath(path, colour) {
 		var al = 2;																										// arrow length
 		var aa = 0.85;																								// arrow angle (2 = full rotation)
 		var r = 2;																										// startpoint circle radius
-		var p0 = path[0];																						// first point
-		var p1 = path[1];																						// second point
+		var p0 = path[0];																							// first point
+		var p1 = path[1];																							// second point
 		var v = p1.subtract(p0).toUnitVector();												// start vector
 		var a1 = v.rotate(Math.PI * aa, $V([0, 0])).toUnitVector();		// arrow arm 1
 		var a2 = v.rotate(Math.PI * -aa, $V([0, 0])).toUnitVector();	// arrow arm 2
