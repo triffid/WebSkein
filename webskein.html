@@ -28,21 +28,29 @@
 			input[type=text].long {
 				width: 80%;
 			}
-			.settings {
+			.settings h3 {
+				color: #88C;
+				border-bottom: 1px solid #CCF;
+				font-weight: bold;
+				font-size: 100%;
+				margin: 0;
+			}
+			.setting {
 				white-space: nowrap;
 				width: 100%;
 				clear: both;
-				border-bottom: 1px solid #DDD;
+				border-bottom: 1px solid #F0F0FF;
 				height: 1.3em;
+				padding-left: 1em;
 			}
-			.settings .label {
+			.setting .label {
 				float: left;
 			}
-			.settings .field {
+			.setting .field {
 				float: right;
 				width: 5em;
 			}
-			.settings .field input {
+			.setting .field input {
 				width: 2.5em;
 			}
 			input.right {
@@ -69,14 +77,15 @@
 				<input id="draw_layer_btn" type="button" value="Draw" />
 				<canvas id="sliceview" style="border: 1px inset;" width="450" height="337"></canvas>
 			</div>
-			<div style="width: 300px; padding: 0; margin: 0; float: left;">
-				<div class="settings"><span class="label">Layer Height</span><span class="field"><input id="layer_height_txt" type="text" value="0.3" />mm</span></div>
-				<hr>
-				<div class="settings"><span class="label">Segment Collinear Distance</span><span class="field"><input id="collinear_distance_txt" type="text" value="0.15" />mm</span></div>
-				<div class="settings"><span class="label">Segment Combine Length</span><span class="field"><input id="combine_length_txt" type="text" value="0.5" />mm</span></div>
-				<div class="settings"><span class="label">Mininum Segment Length</span><span class="field"><input id="min_length_txt" type="text" value="0.4" />mm</span></div>
-				<hr>
-				<div class="settings"><span class="label">Width over Thickness</span><span class="field"><input id="wot_txt" type="text" value="1.6" />:1</span></div>
+			<div class="settings" style="width: 300px; padding: 0; margin: 0; float: left;">
+				<div class="setting"><span class="label">Layer Height</span><span class="field"><input id="layer_height_txt" type="text" value="0.3" />mm</span></div>
+				<h3>Segment Combining Options</h3>
+				<div class="setting"><span class="label">Segment Co-linear Distance</span><span class="field"><input id="collinear_distance_txt" type="text" value="0.15" />mm</span></div>
+				<div class="setting"><span class="label">Segment Co-linear Angle</span><span class="field"><input id="collinear_angle_txt" type="text" value="0.15" />r&theta;</span></div>
+				<div class="setting"><span class="label">Segment Combine Length</span><span class="field"><input id="combine_length_txt" type="text" value="0.5" />mm</span></div>
+				<div class="setting"><span class="label">Mininum Segment Length</span><span class="field"><input id="min_length_txt" type="text" value="0.4" />mm</span></div>
+				<h3>Toolpath Options</h3>
+				<div class="setting"><span class="label">Width over Thickness</span><span class="field"><input id="wot_txt" type="text" value="1.6" />:1</span></div>
 				<hr>
 				<textarea id="pointinfo" rows="10" cols="30" style="width: 100%;">blah</textarea>
 			</div>
@@ -89,6 +98,10 @@
 			var slice_layer_btn = $('slice_layer_btn');
 			var draw_layer_btn = $('draw_layer_btn');
 			var skeincanvas = $('sliceview');
+				skeincanvas.translationX = 0;
+				skeincanvas.translationY = 0;
+				skeincanvas.scale = 0;
+				skeincanvas.scaleF = 1;
 			
 			var debug = $('debug');
 			
@@ -103,9 +116,22 @@
 			var layer_count = new boundValue('layer_count_txt', 0, 0, undefined, true);
 			
 			var collinear_distance = new boundValue('collinear_distance_txt', 0.065, 0);
+			var collinear_angle = new boundValue('collinear_angle_txt', 0.1, 0);
 			var combine_length = new boundValue('combine_length_txt', 0.5, 0);
 			var min_length = new boundValue('min_length_txt', 0.4, 0);
 			var wot = new boundValue('wot_txt', 1.6, 0.2);
+			
+			Object.extend(Event, {
+				wheel:function (event){
+					var delta = 0;
+					if (!event) event = window.event;
+					if (event.wheelDelta) {
+						delta = event.wheelDelta/120; 
+						if (window.opera) delta = -delta;
+					} else if (event.detail) { delta = -event.detail/3;	}
+					return Math.round(delta); //Safari Round
+				}
+			});
 			
 			function gotstl(e) {
 				try {
@@ -182,6 +208,8 @@
 						e.elementY = e.pointerY() - e.element().offsetTop;
 						this.mousedownX = e.elementX;
 						this.mousedownY = e.elementY;
+						this.translation_startX = e.elementX;
+						this.translation_startY = e.elementY;
 						this.mousedown = 1;
 					}
 				});
@@ -189,23 +217,56 @@
 					e.elementX = e.pointerX() - e.element().offsetLeft;
 					e.elementY = e.pointerY() - e.element().offsetTop;
 					if (this.mousedown) {
-						pointInfo(e.elementX, e.elementY);
+						this.mousedown = 0;
+						if ((e.elementX == this.mousedownX) && (e.elementY == this.mousedownY)) {
+							if ((e.elementX < 20) && (e.elementY < 20)) { //>
+								skeincanvas.translationX = 0;
+								skeincanvas.translationY = 0;
+								skeincanvas.scale = 0;
+								skeincanvas.scaleF = 1;
+								if (layers[layer.value])
+									drawLayer(layer.value);
+							}
+						}
 					}
-					this.mousedown = 0;
 				});
 				skeincanvas.observe("mousemove", function(e) {
+					e.elementX = e.pointerX() - e.element().offsetLeft;
+					e.elementY = e.pointerY() - e.element().offsetTop;
+					var dX = e.elementX - this.mousemoveX;
+					var dY = e.elementY - this.mousemoveY;
+					this.mousemoveX = e.elementX;
+					this.mousemoveY = e.elementY;
+					if (this.mousedown) {
+						skeincanvas.translationX += dX;
+						skeincanvas.translationY += dY;
+					}
 					if (layers.length) {
-						e.elementX = e.pointerX() - e.element().offsetLeft;
-						e.elementY = e.pointerY() - e.element().offsetTop;
-						// drawInfoAboutPointNear(e.pointerX, e.pointerY)
+						pointInfo(e.elementX, e.elementY)
 					}
 				});
+				skeincanvas.mousewheelhandler = function(e) {
+					e.stop();
+					if (layers[layer.value]) {
+						var x_start = xscale_invert(this.mousemoveX);
+						var y_start = yscale_invert(this.mousemoveY);
+						skeincanvas.scale += Event.wheel(e);
+						skeincanvas.scaleF = Math.pow(Math.E, skeincanvas.scale / 10);
+						// translate, so we scale as if mousecursor is origin for nice zoom effect
+						skeincanvas.translationX += this.mousemoveX - xscale(x_start);
+						skeincanvas.translationY += this.mousemoveY - yscale(y_start);
+						drawLayer(layer.value);
+					}
+				}
+				skeincanvas.observe("mousewheel", skeincanvas.mousewheelhandler);
+				skeincanvas.observe("DOMMouseScroll", skeincanvas.mousewheelhandler);
 			});
 			
 			function updateHash() {
 				window.location.hash =
 					"lh=" + layer_height.value +
 					",scd=" + collinear_distance.value +
+					",sca=" + collinear_angle.value +
 					",scl=" + combine_length.value +
 					",msl=" + min_length.value +
 					",wot=" + wot.value +
@@ -236,6 +297,10 @@
 					var scd = window.location.hash.match(/scd=(-?[\d\.]+)/i);
 					if (scd)
 						collinear_distance.set(scd[1]);
+						
+					var sca = window.location.hash.match(/scd=(-?[\d\.]+)/i);
+					if (sca)
+						collinear_distance.set(sca[1]);
 						
 					var scl = window.location.hash.match(/scl=(-?[\d\.]+)/i);
 					if (scl)

@@ -31,11 +31,19 @@ var left;
 var right;
 
 function xscale(x) {
-	return linearInterpolate(x,  boundingBox[0].e(1), boundingBox[1].e(1), left, right);
+	return linearInterpolate(x, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF, left, right) + skeincanvas.translationX;
 }
 function yscale(y) {
-	return linearInterpolate(y,  boundingBox[0].e(2), boundingBox[1].e(2), top, bottom);
+	return linearInterpolate(y, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF, top, bottom) + skeincanvas.translationY;
 }
+
+function xscale_invert(x) {
+	return linearInterpolate(x - skeincanvas.translationX, left, right, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF);
+}
+function yscale_invert(y) {
+	return linearInterpolate(y - skeincanvas.translationY, top, bottom, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF);
+}
+
 
 // debug- dump an object recursively
 function dump(arr,level) {
@@ -399,9 +407,10 @@ function lines_to_paths(lines, fudge) {
 					var d1 = p2.distanceFrom(p1);
 	
 					if (
-						(s1.angleFrom(s2) < collinear_distance.value) ||		// co-linear (new point is on same line as previous segment)
-						(d0 < min_length.value) ||														// segment will be too short
-						((d0 + d1) <= combine_length.value) ||								// two consecutive short segments
+						($L(p0, s1).distanceFrom(p2) < collinear_distance.value) ||	// co-linear
+						(s1.angleFrom(s2) < collinear_angle.value) ||								// co-linear (new point is close to line as previous segment)
+						(d0 < min_length.value) ||																	// segment will be too short
+						((d0 + d1) <= combine_length.value) ||											// two consecutive short segments
 						0) {
 						// previous segment and this one are collinear or very short! combine!
 						// we combine simply by not adding p1 to the path, so the next run sees p0 and p2
@@ -436,7 +445,8 @@ function lines_to_paths(lines, fudge) {
 							var d1 = p2.distanceFrom(p1);
 			
 							if (
-								(s1.angleFrom(s2) < collinear_distance.value) ||
+								($L(p0, s1).distanceFrom(p2) < collinear_distance.value) ||
+								(s1.angleFrom(s2) < collinear_angle.value) ||
 								(d0 < min_length.value) ||
 								((d0 + d1) <= combine_length.value) ||
 								0) {
@@ -499,8 +509,12 @@ function drawShell(n) {
 function drawLayer(n) {
 	var context = skeincanvas.getContext('2d');
 	
-	context.clearRect(0, 0, skeincanvas.width, skeincanvas.height);
-	
+	//context.restore();
+	context.clearRect(-100, -100, skeincanvas.width + 100, skeincanvas.height + 100);
+	//context.save();
+	//context.translate(skeincanvas.translationX, skeincanvas.translationY);
+	//context.scale(skeincanvas.scaleF, skeincanvas.scaleF);
+
 	var paths = layers[n].outline;
 	if (paths === undefined) {
 		sliceLayer();
@@ -526,6 +540,19 @@ function drawLayer(n) {
 		var shell = shells[j];
 		drawPath(shell, colours[1]);
 	}
+	
+	// draw reset button
+	context.save();
+		context.lineWidth = 2;
+		context.fillStyle = "rgb(192,96,0)";
+		context.beginPath();
+		context.rect(0, 0, 20, 20);
+		context.fill();
+		context.strokeStyle = "rgb(0,255,0)";
+		context.beginPath();
+		context.arc(10, 10, 7, Math.PI * 0.4, Math.PI * 0.6, true);
+		context.stroke();
+	context.restore();
 }
 
 // this returns a new path set <distance> mm behind the supplied path.
@@ -558,7 +585,7 @@ function shrinkPath(path, distance) {
 		if (a < 0)
 			a += Math.PI * 2;
 
-		if ((a < Math.PI / 2) || (a > Math.PI - 0.1 && a < Math.PI + 0.1)) {
+		if (a > Math.PI - 0.1 && a < Math.PI + 0.1) {
 			// this algorithm breaks on corners where inner theta < 90
 			// it requires us to find overlaps and eliminate the extraneous loops
 			var n3 = n1.add(n2);
@@ -666,8 +693,8 @@ function drawPath(path, colour) {
 
 function pointInfo(x, y) {
 	if (layers[layer.value]) {
-		var lx = linearInterpolate(x, left, right, boundingBox[0].e(1), boundingBox[1].e(1));
-		var ly = linearInterpolate(y, top, bottom, boundingBox[0].e(2), boundingBox[1].e(2));
+		var lx = linearInterpolate(x - skeincanvas.translationX, left, right, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF);
+		var ly = linearInterpolate(y - skeincanvas.translationY, top, bottom, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF);
 		
 		var p = $V([lx, ly]);
 		
@@ -752,9 +779,9 @@ function pointInfo(x, y) {
 		context.save();
 			context.strokeStyle = "rgba(0, 0, 255, 0.5)";
 			context.save();
-				context.beginPath();
-				context.arc(xscale(cl.e(1)), yscale(cl.e(2)), 11, 0, Math.atan2(s2.e(2), s2.e(1)), true);
-				context.stroke();
+//				context.beginPath();
+//				context.arc(xscale(cl.e(1)), yscale(cl.e(2)), 11, 0, Math.atan2(s2.e(2), s2.e(1)), true);
+//				context.stroke();
 				context.lineWidth = 4;
 				context.beginPath();
 				context.moveTo(xscale(cl.e(1)), yscale(cl.e(2)));
@@ -764,9 +791,9 @@ function pointInfo(x, y) {
 			
 			context.strokeStyle = "rgba(255, 128, 0, 0.5)";
 			context.save();
-				context.beginPath();
-				context.arc(xscale(cl.e(1)), yscale(cl.e(2)), 15, 0, Math.atan2(-s1.e(2), -s1.e(1)), true);
-				context.stroke();
+//				context.beginPath();
+//				context.arc(xscale(cl.e(1)), yscale(cl.e(2)), 15, 0, Math.atan2(-s1.e(2), -s1.e(1)), true);
+//				context.stroke();
 				context.lineWidth = 4;
 				context.beginPath();
 				context.moveTo(xscale(cl.e(1)), yscale(cl.e(2)));
