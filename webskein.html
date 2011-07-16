@@ -45,7 +45,7 @@
 			.settings .field input {
 				width: 2.5em;
 			}
-			#apply_btn {
+			input.right {
 				clear: both;
 				float: right;
 				text-align: center;
@@ -78,8 +78,6 @@
 				<hr>
 				<div class="settings"><span class="label">Width over Thickness</span><span class="field"><input id="wot_txt" type="text" value="1.6" />:1</span></div>
 				
-				
-				<input id="apply_btn" type="button" value="Apply" />
 			</div>
 			<textarea id="debug" rows="10" cols="81" style="width: 100%;"></textarea>
 		</form>
@@ -89,7 +87,6 @@
 			var stop_btn = $('stop_btn');
 			var slice_layer_btn = $('slice_layer_btn');
 			var draw_layer_btn = $('draw_layer_btn');
-			var apply_btn = $('apply_btn');
 			
 			var debug = $('debug');
 			
@@ -176,12 +173,6 @@
 					calcLayers();
 					drawLayer(layer.value);
 				}
-				
-				apply_btn.onclick = function() {
-					checkModel();
-					updateHash();
-				}
-				
 			});
 			
 			function updateHash() {
