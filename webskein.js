@@ -21,6 +21,23 @@ var sliceTimer;
 
 var extrusionWidth = 0.5;
 
+// for sliceview
+var modelWidth = 0;
+var modelHeight = 0;
+
+var top;
+var bottom;
+var left;
+var right;
+
+function xscale(x) {
+	return linearInterpolate(x,  boundingBox[0].e(1), boundingBox[1].e(1), left, right);
+}
+function yscale(y) {
+	return linearInterpolate(y,  boundingBox[0].e(2), boundingBox[1].e(2), top, bottom);
+}
+
+// debug- dump an object recursively
 function dump(arr,level) {
 	var dumped_text = "";
 	if(!level) level = 0;
@@ -91,15 +108,49 @@ function checkModel() {
 	triangles = new Array();
 	layers = new Array();
 	try {
-		$('slice_btn').disabled = viewer.scene.children[0].vertexBuffer.length <= 12; //>
+		slice_btn.disabled = viewer.scene.children[0].vertexBuffer.length <= 12;
+		slice_layer_btn.disabled = slice_btn.disabled;
+		
 		if (viewer.afterupdate)
 			debugWrite(' Success\n');
+		
+		// update number of layers
 		calcLayers();
+		
+		// read list of triangles from jsc3d
 		jsc3d_to_sylvester();
+		
+		// update sliceview scaler parameters
+		if (1) {
+			var skeincanvas = $('sliceview');
+		
+			modelWidth = (boundingBox[1].e(1) - boundingBox[0].e(1));
+			modelHeight = (boundingBox[1].e(2) - boundingBox[0].e(2));
+
+			if ((modelWidth / modelHeight) > (skeincanvas.width / skeincanvas.height)) {
+				// model limited by width, cull heights
+				left = 1;
+				right = skeincanvas.width;
+				top = (skeincanvas.height / 2) + (modelHeight * skeincanvas.width / modelWidth / 2);
+				bottom = (skeincanvas.height / 2) - (modelHeight * skeincanvas.width / modelWidth / 2);
+			}
+			else {
+				// model limited by height
+				top = 1;
+				bottom = skeincanvas.height;
+				left = (skeincanvas.width / 2) - (modelWidth * skeincanvas.height / modelHeight / 2);
+				right = (skeincanvas.width / 2) + (modelWidth * skeincanvas.height / modelHeight / 2);
+			}
+			
+			//debugWrite("mapping [" + boundingBox[0].e(1) + "," + boundingBox[0].e(2) + "]-[" + boundingBox[1].e(1) + "," + boundingBox[1].e(2) + 
+			//						"] onto [" + left + "," + right + "]-[" + top + "," + bottom + "]\n");
+		}
+		
 		viewer.afterupdate = undefined;
 	}
 	catch (err) {
-		$('slice_btn').disabled = true;
+		slice_btn.disabled = true;
+		slice_layer_btn.disabled = true;
 	}
 }
 
@@ -495,44 +546,7 @@ function shrinkPath(path, distance) {
 }
 
 function drawPath(path, colour) {
-	var modelWidth = (boundingBox[1].e(1) - boundingBox[0].e(1));
-	var modelHeight = (boundingBox[1].e(2) - boundingBox[0].e(2));
-	
-	var top;
-	var bottom;
-	var left;
-	var right;
-
 	var skeincanvas = $('sliceview');
-
-	if ((modelWidth / modelHeight) > (skeincanvas.width / skeincanvas.height)) {
-		// model limited by width, cull heights
-		left = 1;
-		right = skeincanvas.width;
-		top = (skeincanvas.height / 2) + (modelHeight * skeincanvas.width / modelWidth / 2);
-		bottom = (skeincanvas.height / 2) - (modelHeight * skeincanvas.width / modelWidth / 2);
-	}
-	else {
-		// model limited by height
-		top = 1;
-		bottom = skeincanvas.height;
-		left = (skeincanvas.width / 2) - (modelWidth * skeincanvas.height / modelHeight / 2);
-		right = (skeincanvas.width / 2) + (modelWidth * skeincanvas.height / modelHeight / 2);
-	}
-	
-	debugWrite("mapping [" + boundingBox[0].e(1) + "," + boundingBox[0].e(2) + "]-[" + boundingBox[1].e(1) + "," + boundingBox[1].e(2) + 
-							"] onto [" + left + "," + right + "]-[" + top + "," + bottom + "]\n");
-	
-	// xzoom = zoom * (boundingBox[1].e(1) - boundingBox[0].e(1)) / 4;
-	// yzoom = zoom * (boundingBox[1].e(2) - boundingBox[0].e(2)) / 4;
-	
-	function xscale(x) {
-		return linearInterpolate(x,  boundingBox[0].e(1), boundingBox[1].e(1), left, right);
-	}
-	function yscale(y) {
-		return linearInterpolate(y,  boundingBox[0].e(2), boundingBox[1].e(2), top, bottom);
-	}
-	
 	var context = skeincanvas.getContext('2d');
 
 	context.strokeStyle = 'rgb(' + colour.join(',') + ')';

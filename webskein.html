@@ -22,6 +22,9 @@
 			input[type=button] {
 				border: 1px outset #CCF;
 			}
+			input[disabled] {
+				color: #CCC;
+			}
 			input[type=text].long {
 				width: 80%;
 			}
@@ -128,6 +131,9 @@
 				stloader = new JSC3D.StlLoader();
 				reader.stloader = stloader;
 				
+				slice_btn.disabled = true;
+				slice_layer_btn.disabled = true;
+				
 				stl_uri.clear();
 				
 				stl_uri.observe("change", function(e) {
@@ -139,7 +145,6 @@
 					}
 				});
 				
-				slice_btn.disabled = true;
 				slice_btn.reset = function() {
 					this.disabled = false;
 					this.value = "Skein Model";
@@ -222,9 +227,9 @@
 					if (msl)
 						min_length.set(msl[1]);
 						
-					var wot = window.location.hash.match(/wot=(-?[\d\.]+)/i);
-					if (wot)
-						wot.set(wot[1]);
+					var wotr = window.location.hash.match(/wot=(-?[\d\.]+)/i);
+					if (wotr)
+						wot.set(wotr[1]);
 				}
 				
 				//if (getopt['stl']) {
