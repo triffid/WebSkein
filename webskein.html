@@ -86,6 +86,7 @@
 				<div class="setting"><span class="label">Mininum Segment Length</span><span class="field"><input id="min_length_txt" type="text" value="0.4" />mm</span></div>
 				<h3>Toolpath Options</h3>
 				<div class="setting"><span class="label">Width over Thickness</span><span class="field"><input id="wot_txt" type="text" value="1.6" />:1</span></div>
+				<div class="setting"><span class="label">Shell Count</span><span class="field"><input id="shell_count_txt" type="text" value="1.6" />#</span></div>
 				<hr>
 				<textarea id="pointinfo" rows="10" cols="30" style="width: 100%;">blah</textarea>
 			</div>
@@ -120,6 +121,7 @@
 			var combine_length = new boundValue('combine_length_txt', 0.5, 0);
 			var min_length = new boundValue('min_length_txt', 0.4, 0);
 			var wot = new boundValue('wot_txt', 1.6, 0.2);
+			var shell_count = new boundValue('shell_count_txt', 1, 1, undefined, true);
 			
 			Object.extend(Event, {
 				wheel:function (event){
@@ -270,6 +272,7 @@
 					",scl=" + combine_length.value +
 					",msl=" + min_length.value +
 					",wot=" + wot.value +
+					",ns=" + shell_count.value +
 					"";
 			}
 			
@@ -298,9 +301,9 @@
 					if (scd)
 						collinear_distance.set(scd[1]);
 						
-					var sca = window.location.hash.match(/scd=(-?[\d\.]+)/i);
+					var sca = window.location.hash.match(/sca=(-?[\d\.]+)/i);
 					if (sca)
-						collinear_distance.set(sca[1]);
+						collinear_angle.set(sca[1]);
 						
 					var scl = window.location.hash.match(/scl=(-?[\d\.]+)/i);
 					if (scl)
@@ -313,6 +316,10 @@
 					var wotr = window.location.hash.match(/wot=(-?[\d\.]+)/i);
 					if (wotr)
 						wot.set(wotr[1]);
+						
+					var ns = window.location.hash.match(/ns=(-?[\d\.]+)/i);
+					if (ns)
+						shell_count.set(ns[1]);
 				}
 				
 				//if (getopt['stl']) {

@@ -37,11 +37,18 @@ function yscale(y) {
 	return linearInterpolate(y, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF, top, bottom) + skeincanvas.translationY;
 }
 
+function wscale(w) {
+	return linearInterpolate(w, 0, (boundingBox[1].e(1) / skeincanvas.scaleF) - (boundingBox[0].e(1) / skeincanvas.scaleF), 0, right - left);
+}
+
 function xscale_invert(x) {
 	return linearInterpolate(x - skeincanvas.translationX, left, right, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF);
 }
 function yscale_invert(y) {
 	return linearInterpolate(y - skeincanvas.translationY, top, bottom, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF);
+}
+function wscale_invert(w) {
+	return linearInterpolate(w, 0, right - left, 0, (boundingBox[1].e(1) / skeincanvas.scaleF) - (boundingBox[0].e(1) / skeincanvas.scaleF));
 }
 
 
@@ -364,6 +371,39 @@ function sliceLayer() {
 		debugWrite(' OK\n');
 	}
 }
+
+// check for combinability. if can be combined, returns null
+// otherwise, returns the junction point to be added
+// do NOT assume that we will return the same p1 that was passed in, in the future we may provide a new one
+function checkCombine(p0, p1, p2) {
+	// check for collinearity
+	var s1 = p1.subtract(p0);
+	var s2 = p2.subtract(p1);
+	
+	// check for very short runs
+	var d0 = p1.distanceFrom(p0);
+	var d1 = p2.distanceFrom(p1);
+	var d2 = p2.distanceFrom(p0);
+
+	if (p0.eql(p1))
+		return null;
+	if (p1.eql(p2))
+		return p0;
+
+	if (
+		($L(p0, s1).distanceFrom(p2) < collinear_distance.value) ||	// co-linear
+		(s1.angleFrom(s2) < collinear_angle.value) ||								// co-linear (new point is close to line as previous segment)
+		((s1.angleFrom(s2) < (Math.PI + collinear_angle.value)) && (s1.angleFrom(s2) > (Math.PI - collinear_angle.value))) || // line turns back on itself
+		(d0 < min_length.value) ||																	// segment will be too short
+		((d0 + d1) <= combine_length.value) ||											// two consecutive short segments
+		(d2 < combine_length.value) ||															// segment must double back on itself for p0 and p2 to be so close
+		0) {
+		// previous segment and this one are combinable!
+		return null;
+	}
+	
+	return p1;
+}
 	
 // takes a random collection of segments and creates one or more paths
 // since our lines' endpoints are in a specific winding order we can assume that p[1] connects to the next segment's p[0]
@@ -397,25 +437,9 @@ function lines_to_paths(lines, fudge) {
 					var p0 = path[path.length - 1];		// start of last segment
 					var p1 = cl[0];										// end of last segment/start of found segment (point found at tp.eql(fp) above)
 					var p2 = cl[1];										// end of found segment
-				
-					// check for collinearity
-					var s1 = p1.subtract(p0);
-					var s2 = p2.subtract(p1);
 					
-					// check for very short runs
-					var d0 = p1.distanceFrom(p0);
-					var d1 = p2.distanceFrom(p1);
-	
-					if (
-						($L(p0, s1).distanceFrom(p2) < collinear_distance.value) ||	// co-linear
-						(s1.angleFrom(s2) < collinear_angle.value) ||								// co-linear (new point is close to line as previous segment)
-						(d0 < min_length.value) ||																	// segment will be too short
-						((d0 + d1) <= combine_length.value) ||											// two consecutive short segments
-						0) {
-						// previous segment and this one are collinear or very short! combine!
-						// we combine simply by not adding p1 to the path, so the next run sees p0 and p2
-					}
-					else
+					p1 = checkCombine(p0, p1, p2);
+					if (p1)
 						path.push(p1);
 				}
 				else
@@ -436,20 +460,7 @@ function lines_to_paths(lines, fudge) {
 								p0 = path[path.length - 1];
 							}
 						
-							// check for collinearity
-							var s1 = p1.subtract(p0);
-							var s2 = p2.subtract(p1);
-							
-							// check for very short runs
-							var d0 = p1.distanceFrom(p0);
-							var d1 = p2.distanceFrom(p1);
-			
-							if (
-								($L(p0, s1).distanceFrom(p2) < collinear_distance.value) ||
-								(s1.angleFrom(s2) < collinear_angle.value) ||
-								(d0 < min_length.value) ||
-								((d0 + d1) <= combine_length.value) ||
-								0) {
+							if (checkCombine(p0, p1, p2) == null) {
 								// previous segment and this one are collinear or very short! combine!
 								path[0] = p0;
 								path.pop();
@@ -490,69 +501,44 @@ function lines_to_paths(lines, fudge) {
 	
 	debugWrite(" " + paths.length + " paths...");
 	
-	layers[layer.value] = { outline: paths };
+	layers[layer.value] = { outline: paths, shells: [] };
 	
-	drawShell(0);
+	for (var i = 0; i < shell_count.value; i++) {
+		skeinShell(i);
+	}
 }
 
 // draw shell(s) inside the perimeter.
 // pass index of shell to draw
-function drawShell(n) {
+function skeinShell(n) {
 	var paths = layers[layer.value].outline;
-	layers[layer.value].shells = [];
+	layers[layer.value].shells[n] = [];
 	for (var i = 0; i < paths.length; i++) {
 		var shell = shrinkPath(paths[i], (extrusionWidth * n) + (extrusionWidth / 2));
-		layers[layer.value].shells.push(shell);
+		layers[layer.value].shells[n][i] = shell;
 	}
 }
 
-function drawLayer(n) {
-	var context = skeincanvas.getContext('2d');
-	
-	//context.restore();
-	context.clearRect(-100, -100, skeincanvas.width + 100, skeincanvas.height + 100);
-	//context.save();
-	//context.translate(skeincanvas.translationX, skeincanvas.translationY);
-	//context.scale(skeincanvas.scaleF, skeincanvas.scaleF);
-
-	var paths = layers[n].outline;
-	if (paths === undefined) {
-		sliceLayer();
-		paths = layers[n].outline;
-	}
-	var shells = layers[n].shells;
-	
-	var colours = [
-			[0,0,0],
-			[255,0,0],
-			[0,255,0],
-			[0,0,255],
-			[255,255,0],
-			[255,0,255],
-			[0,255,255]
-		];
-
-	for (var j = 0; j < paths.length; j++) {
-		var path = paths[j];
-		drawPath(path, colours[0]);
-	}	
-	for (var j = 0; j < shells.length; j++) {
-		var shell = shells[j];
-		drawPath(shell, colours[1]);
+// check path for possible combine optimisations
+function combineOptimisePath(path) {
+	var newpath = path;
+	var p0 = path.last();
+	for (var i = 0; i < path.length; i++) {
+		var p1 = path[i];
+		var p2 = path[(i + 1) % path.length];
+		
+		var p = checkCombine(p0,p1,p2);
+		if (!p)
+			newpath.splice(i, 1);
+		else
+			p0 = p;
 	}
 	
-	// draw reset button
-	context.save();
-		context.lineWidth = 2;
-		context.fillStyle = "rgb(192,96,0)";
-		context.beginPath();
-		context.rect(0, 0, 20, 20);
-		context.fill();
-		context.strokeStyle = "rgb(0,255,0)";
-		context.beginPath();
-		context.arc(10, 10, 7, Math.PI * 0.4, Math.PI * 0.6, true);
-		context.stroke();
-	context.restore();
+	if (path.length > newpath.length) {
+		debugWrite("CombineOptimise dropped " + (path.length - newpath.length) + " points\n");
+	}
+	
+	return newpath;
 }
 
 // this returns a new path set <distance> mm behind the supplied path.
@@ -611,47 +597,109 @@ function shrinkPath(path, distance) {
 		newpath.push(p);
 	}
 	
-	return newpath;
+	return combineOptimisePath(newpath);
 }
 
-function drawPath(path, colour) {
+function drawLayer(n) {
+	var context = skeincanvas.getContext('2d');
+	
+	//context.restore();
+	context.clearRect(-100, -100, skeincanvas.width + 100, skeincanvas.height + 100);
+	//context.save();
+	//context.translate(skeincanvas.translationX, skeincanvas.translationY);
+	//context.scale(skeincanvas.scaleF, skeincanvas.scaleF);
+
+	var paths = layers[n].outline;
+	if (paths === undefined) {
+		sliceLayer();
+		paths = layers[n].outline;
+	}
+	var shells = layers[n].shells;
+	
+	var colours = [
+			[0,0,0],
+			[255,0,0],
+			[0,255,0],
+			[0,0,255],
+			[255,255,0],
+			[255,0,255],
+			[0,255,255]
+		];
+
+	for (var j = 0; j < paths.length; j++) {
+		var path = paths[j];
+		drawPath(path, colours[0], 0.75);
+	}	
+	for (var j = 0; j < shells.length; j++) {
+		var shell = shells[j];
+		for (var i = 0; i < shell.length; i++) {
+			var path = shell[i];
+			drawPath(path, colours[(j % (colours.length - 2)) + 1], wscale(extrusionWidth));
+		}
+	}
+	
+	// draw reset button
+	context.save();
+		context.lineWidth = 2;
+		context.fillStyle = "rgb(192,96,0)";
+		context.beginPath();
+		context.rect(0, 0, 20, 20);
+		context.fill();
+		context.strokeStyle = "rgb(0,255,0)";
+		context.beginPath();
+		context.arc(10, 10, 7, Math.PI * 0.4, Math.PI * 0.6, true);
+		context.stroke();
+	context.restore();
+}
+
+function drawPath(path, colour, width) {
 	var skeincanvas = $('sliceview');
 	var context = skeincanvas.getContext('2d');
+	
+	if (!width)
+		width = 0.75;
 
-	context.strokeStyle = 'rgb(' + colour.join(',') + ')';
-	context.lineWidth = 1;
-	context.beginPath();
+	context.save()
+		context.strokeStyle = 'rgba(' + colour.join(',') + ', 0.5)';
+		context.lineWidth = width;
+		context.lineCap = 'round';
+		context.lineJoin = 'round';
+		context.beginPath();
 	
-	path.push(path[0]);	
-	for (var i = 0; i < path.length; i++) {
-		var point = path[i];
-		var x = xscale(point.e(1));
-		var y = yscale(point.e(2));
-		context.lineTo(x, y);
-	}
-	path.pop();
+		path.push(path[0]);	
+		for (var i = 0; i < path.length; i++) {
+			var point = path[i];
+			var x = xscale(point.e(1));
+			var y = yscale(point.e(2));
+			context.lineTo(x, y);
+		}
+		path.pop();
 	
-	context.stroke();		
+		context.stroke();
+	context.restore();
 
 	// lines drawn, now do normals
 
-	context.strokeStyle = 'rgba(' + colour.join(',') + ',0.25)';
-	context.beginPath();
-	
-	path.push(path[0]);	
-	for (var i = 1; i < path.length; i++) {
-		var vl = 1; // normal tick length, millimeters
-		var p0 = path[i - 1];
-		var p1 = path[i];
-		var n = $V([p0.e(1) - p1.e(1), p0.e(2) - p1.e(2), 0]).cross($V([0, 0, 1])).toUnitVector().multiply(vl);
-		var x = (p0.e(1) + p1.e(1)) / 2;
-		var y = (p0.e(2) + p1.e(2)) / 2;
-		context.moveTo(xscale(x), yscale(y));
-		context.lineTo(xscale(x + n.e(1)), yscale(y + n.e(2)));
-	}	
-	path.pop();
-	
-	context.stroke();		
+	context.save();
+		context.strokeStyle = 'rgba(' + colour.join(',') + ',0.25)';
+		context.lineWidth = 1;
+		context.beginPath();
+		
+		path.push(path[0]);	
+		for (var i = 1; i < path.length; i++) {
+			var vl = 1; // normal tick length, millimeters
+			var p0 = path[i - 1];
+			var p1 = path[i];
+			var n = $V([p0.e(1) - p1.e(1), p0.e(2) - p1.e(2), 0]).cross($V([0, 0, 1])).toUnitVector().multiply(vl);
+			var x = (p0.e(1) + p1.e(1)) / 2;
+			var y = (p0.e(2) + p1.e(2)) / 2;
+			context.moveTo(xscale(x), yscale(y));
+			context.lineTo(xscale(x + n.e(1)), yscale(y + n.e(2)));
+		}	
+		path.pop();
+		
+		context.stroke();
+	context.restore();
 	
 	if (1) {
 		var sl = 4;																										// start vector length
@@ -667,17 +715,19 @@ function drawPath(path, colour) {
 		var y1 = p0.e(2);
 		var x2 = p0.e(1) + v.e(1);																		// start point + start vector
 		var y2 = p0.e(2) + v.e(2);
-
+		
 		// now draw path entry point and direction vector
-		context.strokeStyle = 'rgba(' + colour.join(',') + ',0.5)';
-		context.lineWidth = 2;
-		context.beginPath();
-		context.arc(xscale(x1), yscale(y1), r, 0, Math.PI * 2, true);
-		context.moveTo(xscale(x1), yscale(y1));
-		context.lineTo(xscale(x2), yscale(y2));
-		context.stroke();
-
-		if (1) {		
+		context.save();
+			context.strokeStyle = 'rgba(' + colour.join(',') + ',0.5)';
+			context.lineWidth = 2;
+			context.beginPath();
+			context.arc(xscale(x1), yscale(y1), r, 0, Math.PI * 2, true);
+			context.moveTo(xscale(x1), yscale(y1));
+			context.lineTo(xscale(x2), yscale(y2));
+			context.stroke();
+		context.restore();
+		
+		context.save();
 			// now draw direction vector arrows
 			context.strokeStyle = 'rgba(' + colour.join(',') + ',0.5)';
 			context.lineWidth = 0.75;
@@ -687,7 +737,7 @@ function drawPath(path, colour) {
 			context.lineTo(xscale(x2 + a2.e(1)), yscale(y2 + a2.e(2)));
 			context.lineTo(xscale(x2), yscale(y2));
 			context.stroke();
-		}
+		context.restore();
 	}
 }
 
@@ -703,46 +753,56 @@ function pointInfo(x, y) {
 		var gr;
 		var path_ind;
 		var point_ind;
+		var shell_ind;
 		
 		var outlines = layers[layer.value].outline;
 		var shells = layers[layer.value].shells;
+		var path;
 		
 		for (i = 0; i < outlines.length; i++) {
-			var path = outlines[i];
-			for (var j = 0; j < path.length; j++) {
-				var point = path[j];
+			var cpath = outlines[i];
+			for (var j = 0; j < cpath.length; j++) {
+				var point = cpath[j];
 				var pd = point.distanceFrom(p);
 				if (pd < d) {
 					cl = point;
 					d = pd;
 					gr = 'outline';
+					path = cpath;
 					path_ind = i;
 					point_ind = j;
 				}
 			}
 		}
 		for (i = 0; i < shells.length; i++) {
-			var path = shells[i];
-			for (var j = 0; j < path.length; j++) {
-				var point = path[j];
-				var pd = point.distanceFrom(p);
-				if (pd < d) {
-					cl = point;
-					d = pd;
-					gr = 'shells';
-					path_ind = i;
-					point_ind = j;
+			var shellpaths = shells[i];
+			for (var j = 0; j < shellpaths.length; j++) {
+				var cpath = shellpaths[j];
+				for (var k = 0; k < cpath.length; k++) {
+					var point = cpath[k];
+					var pd = point.distanceFrom(p);
+					if (pd < d) {
+						cl = point;
+						d = pd;
+						gr = 'shells';
+						path = cpath;
+						shell_ind = i;
+						path_ind = j;
+						point_ind = k;
+					}
 				}
 			}
 		}
 		
 		drawLayer(layer.value);
 		
-		var path = layers[layer.value][gr][path_ind];
+		// var path = layers[layer.value][gr][path_ind];
 		
 		var description = "[" + cl.e(1) + "," + cl.e(2) + "]\n"
 		
 		description += "Group: " + gr + "\n";
+		if (gr == 'shells')
+			description += "Shell " + shell_ind + "\n";
 		description += "Set: " + path_ind + "\n";
 		description += "Index: " + point_ind + "\n";
 		
@@ -764,6 +824,14 @@ function pointInfo(x, y) {
 			a += Math.PI * 2;
 		
 		description += "Angle: " + (a * 180 / Math.PI).toFixed(2) + " degrees\n";
+		
+		description += "distance(p0,p2) = " + p2.distanceFrom(p0) + "\n";
+		
+		description += "Combinable: ";
+		if (checkCombine(p0, p1, p2))
+			description += "no\n";
+		else
+			description += "yes\n";			
 
 		var context = skeincanvas.getContext('2d');
 		
@@ -775,34 +843,24 @@ function pointInfo(x, y) {
 			context.stroke();
 		context.restore();
 
-		
 		context.save();
 			context.strokeStyle = "rgba(0, 0, 255, 0.5)";
-			context.save();
-//				context.beginPath();
-//				context.arc(xscale(cl.e(1)), yscale(cl.e(2)), 11, 0, Math.atan2(s2.e(2), s2.e(1)), true);
-//				context.stroke();
-				context.lineWidth = 4;
-				context.beginPath();
-				context.moveTo(xscale(cl.e(1)), yscale(cl.e(2)));
-				context.lineTo(xscale(p2.e(1)), yscale(p2.e(2)));
-				context.stroke();
-			context.restore();
-			
-			context.strokeStyle = "rgba(255, 128, 0, 0.5)";
-			context.save();
-//				context.beginPath();
-//				context.arc(xscale(cl.e(1)), yscale(cl.e(2)), 15, 0, Math.atan2(-s1.e(2), -s1.e(1)), true);
-//				context.stroke();
-				context.lineWidth = 4;
-				context.beginPath();
-				context.moveTo(xscale(cl.e(1)), yscale(cl.e(2)));
-				context.lineTo(xscale(p0.e(1)), yscale(p0.e(2)));
-				context.stroke();
-			context.restore();
+			context.lineWidth = 4;
+			context.beginPath();
+			context.moveTo(xscale(cl.e(1)), yscale(cl.e(2)));
+			context.lineTo(xscale(p2.e(1)), yscale(p2.e(2)));
+			context.stroke();
 		context.restore();
 		
-		
+		context.save();
+			context.strokeStyle = "rgba(255, 128, 0, 0.5)";
+			context.lineWidth = 4;
+			context.beginPath();
+			context.moveTo(xscale(cl.e(1)), yscale(cl.e(2)));
+			context.lineTo(xscale(p0.e(1)), yscale(p0.e(2)));
+			context.stroke();
+		context.restore();
+	
 		var pointinfo = $('pointinfo');
 		pointinfo.value = description;
 	}
