@@ -77,7 +77,8 @@
 				<div class="settings"><span class="label">Mininum Segment Length</span><span class="field"><input id="min_length_txt" type="text" value="0.4" />mm</span></div>
 				<hr>
 				<div class="settings"><span class="label">Width over Thickness</span><span class="field"><input id="wot_txt" type="text" value="1.6" />:1</span></div>
-				
+				<hr>
+				<textarea id="pointinfo" rows="10" cols="30" style="width: 100%;">blah</textarea>
 			</div>
 			<textarea id="debug" rows="10" cols="81" style="width: 100%;"></textarea>
 		</form>
@@ -87,6 +88,7 @@
 			var stop_btn = $('stop_btn');
 			var slice_layer_btn = $('slice_layer_btn');
 			var draw_layer_btn = $('draw_layer_btn');
+			var skeincanvas = $('sliceview');
 			
 			var debug = $('debug');
 			
@@ -173,6 +175,31 @@
 					calcLayers();
 					drawLayer(layer.value);
 				}
+				
+				skeincanvas.observe("mousedown", function(e) {
+					if (e.isLeftClick()) {
+						e.elementX = e.pointerX() - e.element().offsetLeft;
+						e.elementY = e.pointerY() - e.element().offsetTop;
+						this.mousedownX = e.elementX;
+						this.mousedownY = e.elementY;
+						this.mousedown = 1;
+					}
+				});
+				skeincanvas.observe("mouseup", function(e) {
+					e.elementX = e.pointerX() - e.element().offsetLeft;
+					e.elementY = e.pointerY() - e.element().offsetTop;
+					if (this.mousedown) {
+						pointInfo(e.elementX, e.elementY);
+					}
+					this.mousedown = 0;
+				});
+				skeincanvas.observe("mousemove", function(e) {
+					if (layers.length) {
+						e.elementX = e.pointerX() - e.element().offsetLeft;
+						e.elementY = e.pointerY() - e.element().offsetTop;
+						// drawInfoAboutPointNear(e.pointerX, e.pointerY)
+					}
+				});
 			});
 			
 			function updateHash() {

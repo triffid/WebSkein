@@ -79,34 +79,47 @@ function canvasInit() {
 	viewer.update();
 }
 
-function getFloat(e, def) {
-	var n = $(e).value;
-	if (!isNaN(parseFloat(n)) && isFinite(n)) {
-		n = parseFloat(n);
-	}
-	else {
-		n = def;
-	}
-	e.value = n;
-	return n;
+function segment2line(s) {
+	return $L(s[0], s[1].subtract(s[0]));
 }
 
-function getInt(e, def) {
-	var n = $(e).value;
-	if (!isNaN(parseFloat(n)) && isFinite(n)) {
-		n = parseFloat(n);
-	}
-	else {
-		n = def;
-	}
-	n = Math.floor(n);
-	e.value = n;
-	return n;
+function segmentIntersect(s1, s2) {
+	if (s1.dimensions() != s2.dimensions())
+		throw "segmentIntersect: s1 has different number of dimensions to s2!";
+
+	var l1 = segment2line(s1);
+	var l2 = segment2line(s2);
+	
+	var p = l1.intersectionWith(l2);
+	
+	// no intersection
+	if (!p)
+		return null;
+	
+	var s1l = s1[0].distanceFrom(s1[1]);
+	var s2l = s2[0].distanceFrom(s2[1]);
+	
+	// check if intersection is on s1
+	if (p.distanceFrom(s1[0]) > s1l)
+		return null;
+	if (p.distanceFrom(s1[1]) > s1l)
+		return null;
+	
+	// check if intersection is on s2
+	if (p.distanceFrom(s2[0]) > s2l)
+		return null;
+	if (p.distanceFrom(s2[1]) > s2l)
+		return null;
+	
+	if (s1.dimensions() == 2)
+		return $V([p.e(1), p.e(2)]);
+	
+	return p;
 }
 
 function checkModel() {
-	triangles = new Array();
-	layers = new Array();
+	triangles = [];
+	layers = [];
 	try {
 		slice_btn.disabled = viewer.scene.children[0].vertexBuffer.length <= 12;
 		slice_layer_btn.disabled = slice_btn.disabled;
@@ -122,24 +135,22 @@ function checkModel() {
 		
 		// update sliceview scaler parameters
 		if (1) {
-			var skeincanvas = $('sliceview');
-		
 			modelWidth = (boundingBox[1].e(1) - boundingBox[0].e(1));
 			modelHeight = (boundingBox[1].e(2) - boundingBox[0].e(2));
 
 			if ((modelWidth / modelHeight) > (skeincanvas.width / skeincanvas.height)) {
 				// model limited by width, cull heights
-				left = 1;
-				right = skeincanvas.width;
-				top = (skeincanvas.height / 2) + (modelHeight * skeincanvas.width / modelWidth / 2);
-				bottom = (skeincanvas.height / 2) - (modelHeight * skeincanvas.width / modelWidth / 2);
+				left = 5;
+				right = skeincanvas.width - 10;
+				top = (skeincanvas.height / 2) - (modelHeight * (skeincanvas.width - 10) / modelWidth / 2);
+				bottom = (skeincanvas.height / 2) + (modelHeight * (skeincanvas.width - 10) / modelWidth / 2);
 			}
 			else {
 				// model limited by height
-				top = 1;
-				bottom = skeincanvas.height;
-				left = (skeincanvas.width / 2) - (modelWidth * skeincanvas.height / modelHeight / 2);
-				right = (skeincanvas.width / 2) + (modelWidth * skeincanvas.height / modelHeight / 2);
+				top = 5;
+				bottom = skeincanvas.height - 10;
+				left = (skeincanvas.width / 2) - (modelWidth * (skeincanvas.height - 10) / modelHeight / 2);
+				right = (skeincanvas.width / 2) + (modelWidth * (skeincanvas.height - 10) / modelHeight / 2);
 			}
 			
 			//debugWrite("mapping [" + boundingBox[0].e(1) + "," + boundingBox[0].e(2) + "]-[" + boundingBox[1].e(1) + "," + boundingBox[1].e(2) + 
@@ -409,6 +420,11 @@ function lines_to_paths(lines, fudge) {
 							var p0 = path[path.length - 1];
 							var p1 = path[0];
 							var p2 = path[1];
+							
+							while (p0.eql(p1)) {
+								path.pop();
+								p0 = path[path.length - 1];
+							}
 						
 							// check for collinearity
 							var line = $L(p0, p1.subtract(p0));
@@ -424,7 +440,7 @@ function lines_to_paths(lines, fudge) {
 								0) {
 								// previous segment and this one are collinear or very short! combine!
 								path[0] = p0;
-								path.pop;
+								path.pop();
 							}
 						}
 						
@@ -479,7 +495,6 @@ function drawShell(n) {
 }
 
 function drawLayer(n) {
-	var skeincanvas = $('sliceview');
 	var context = skeincanvas.getContext('2d');
 	
 	context.clearRect(0, 0, skeincanvas.width, skeincanvas.height);
@@ -515,9 +530,11 @@ function drawLayer(n) {
 // NOTE: for inner paths (eg holes), this will make the path /larger/ so that the new path is inside the object
 // algorithm:
 // for each triplet of points p0, p1, p2
-// there are two segments s0(p1-p0), s1(p2-p1)
-// find a normal n = (n[s0] + n[s1]).toUnit()
-// and move the vertex p1 along this normal by negative distance.
+// we look for a new p1
+// there are two segments s1(p1-p0), s2(p2-p1)
+// find normals n1(s1.cross(Z)), n2(s2.cross(Z))
+// and move s1 along normal n1 by -distance, same for s2
+// then find the intersection of new s1 and new s2, this is our new p1
 
 function shrinkPath(path, distance) {
 	var newpath = [];
@@ -530,14 +547,36 @@ function shrinkPath(path, distance) {
 		var s2 = p2.subtract(p1);
 		
 		// normals for our segments
-		var n1 = $V([s1.e(1), s1.e(2), 0]).cross($V([0, 0, -1])).toUnitVector();
-		var n2 = $V([s2.e(1), s2.e(2), 0]).cross($V([0, 0, -1])).toUnitVector();
+		var n1 = s1.to3D().cross($V([0, 0, -1])).toUnitVector();
+		var n2 = s2.to3D().cross($V([0, 0, -1])).toUnitVector();
 		
-		var n3 = n1.add(n2);
+		var p;
 		
-		var n = $V([n3.e(1), n3.e(2)]).toUnitVector();
-		
-		var p = p1.add(n.multiply(-distance));
+		var a = Math.atan2(s2.e(2), s2.e(1)) - Math.atan2(-s1.e(2), -s1.e(1));
+		if (a < 0)
+			a += Math.PI * 2;
+
+		if (a < 45) {
+			// this algorithm breaks on corners where inner theta < 90
+			// it requires us to find overlaps and eliminate the extraneous loops
+			var n3 = n1.add(n2);
+			
+			var n = $V([n3.e(1), n3.e(2)]).toUnitVector();
+			
+			p = p1.add(n.multiply(-distance));
+		}
+		else {
+			// this algorithm never makes loops, but may go 'outside the lines' at acute corners
+			n1 = $V([n1.e(1),n1.e(2)]).multiply(-distance);
+			n2 = $V([n2.e(1),n2.e(2)]).multiply(-distance);
+			
+			var ns1 = segment2line([p0, p1]).translate(n1);
+			var ns2 = segment2line([p1, p2]).translate(n2);
+			
+			p = ns1.intersectionWith(ns2);
+			
+			p = $V([p.e(1), p.e(2)]);
+		}
 		
 		newpath.push(p);
 	}
@@ -619,5 +658,122 @@ function drawPath(path, colour) {
 			context.lineTo(xscale(x2), yscale(y2));
 			context.stroke();
 		}
+	}
+}
+
+function pointInfo(x, y) {
+	if (layers[layer.value]) {
+		var lx = linearInterpolate(x, left, right, boundingBox[0].e(1), boundingBox[1].e(1));
+		var ly = linearInterpolate(y, top, bottom, boundingBox[0].e(2), boundingBox[1].e(2));
+		
+		var p = $V([lx, ly]);
+		
+		var cl = $V([0, 0]);
+		var d = 2147483647;
+		var gr;
+		var path_ind;
+		var point_ind;
+		
+		var outlines = layers[layer.value].outline;
+		var shells = layers[layer.value].shells;
+		
+		for (i = 0; i < outlines.length; i++) {
+			var path = outlines[i];
+			for (var j = 0; j < path.length; j++) {
+				var point = path[j];
+				var pd = point.distanceFrom(p);
+				if (pd < d) {
+					cl = point;
+					d = pd;
+					gr = 'outline';
+					path_ind = i;
+					point_ind = j;
+				}
+			}
+		}
+		for (i = 0; i < shells.length; i++) {
+			var path = shells[i];
+			for (var j = 0; j < path.length; j++) {
+				var point = path[j];
+				var pd = point.distanceFrom(p);
+				if (pd < d) {
+					cl = point;
+					d = pd;
+					gr = 'shells';
+					path_ind = i;
+					point_ind = j;
+				}
+			}
+		}
+		
+		drawLayer(layer.value);
+		
+		var path = layers[layer.value][gr][path_ind];
+		
+		var description = "[" + cl.e(1) + "," + cl.e(2) + "]\n"
+		
+		description += "Group: " + gr + "\n";
+		description += "Set: " + path_ind + "\n";
+		description += "Index: " + point_ind + "\n";
+		
+		var p0i = (point_ind + path.length - 1) % path.length;
+		var p2i = (point_ind + 1) % path.length;
+
+		var p0 = path[p0i];
+		var p1 = cl;
+		var p2 = path[p2i];
+		
+		description += "Next (blue): [" + p2i + "] = [" + p2.e(1) + "," + p2.e(2) + "]\n";
+		description += "Previous (orange): [" + p0i + "] = [" + p0.e(1) + "," + p0.e(2) + "]\n";
+		
+		var s1 = p1.subtract(p0);
+		var s2 = p2.subtract(p1);
+		
+		var a = Math.atan2(s2.e(2), s2.e(1)) - Math.atan2(-s1.e(2), -s1.e(1));
+		if (a < 0)
+			a += Math.PI * 2;
+		
+		description += "Angle: " + (a * 180 / Math.PI) + " degrees\n";
+
+		var context = skeincanvas.getContext('2d');
+		
+		context.save();
+			context.strokeStyle = "rgba(0, 255, 0, 1)";
+			context.fillStyle = "rgba(0, 255, 0, 0.5)";
+			context.beginPath();
+			context.arc(xscale(cl.e(1)), yscale(cl.e(2)), 25, Math.atan2(s2.e(2), s2.e(1)), Math.atan2(-s1.e(2), -s1.e(1)), true);
+			context.stroke();
+		context.restore();
+
+		
+		context.save();
+			context.strokeStyle = "rgba(0, 0, 255, 0.5)";
+			context.save();
+				context.beginPath();
+				context.arc(xscale(cl.e(1)), yscale(cl.e(2)), 11, 0, Math.atan2(s2.e(2), s2.e(1)), true);
+				context.stroke();
+				context.lineWidth = 4;
+				context.beginPath();
+				context.moveTo(xscale(cl.e(1)), yscale(cl.e(2)));
+				context.lineTo(xscale(p2.e(1)), yscale(p2.e(2)));
+				context.stroke();
+			context.restore();
+			
+			context.strokeStyle = "rgba(255, 128, 0, 0.5)";
+			context.save();
+				context.beginPath();
+				context.arc(xscale(cl.e(1)), yscale(cl.e(2)), 15, 0, Math.atan2(-s1.e(2), -s1.e(1)), true);
+				context.stroke();
+				context.lineWidth = 4;
+				context.beginPath();
+				context.moveTo(xscale(cl.e(1)), yscale(cl.e(2)));
+				context.lineTo(xscale(p0.e(1)), yscale(p0.e(2)));
+				context.stroke();
+			context.restore();
+		context.restore();
+		
+		
+		var pointinfo = $('pointinfo');
+		pointinfo.value = description;
 	}
 }
