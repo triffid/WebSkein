@@ -99,35 +99,35 @@ function segment2line(s) {
 }
 
 function segmentIntersect(s1, s2) {
-	if (s1.dimensions() != s2.dimensions())
+	if (s1[0].dimensions() != s2[0].dimensions())
 		throw "segmentIntersect: s1 has different number of dimensions to s2!";
 
 	var l1 = segment2line(s1);
 	var l2 = segment2line(s2);
 	
 	var p = l1.intersectionWith(l2);
-	
+
 	// no intersection
 	if (!p)
 		return null;
 	
-	var s1l = s1[0].distanceFrom(s1[1]);
-	var s2l = s2[0].distanceFrom(s2[1]);
+	if (s1[0].dimensions() == 2)
+		p = $V([p.e(1), p.e(2)]);
+		
+	var d1 = s1[0].distanceFrom(s1[1]);
+	var d2 = s2[0].distanceFrom(s2[1]);
 	
 	// check if intersection is on s1
-	if (p.distanceFrom(s1[0]) > s1l)
+	if (p.distanceFrom(s1[0]) >= d1)
 		return null;
-	if (p.distanceFrom(s1[1]) > s1l)
+	if (p.distanceFrom(s1[1]) >= d1)
 		return null;
 	
 	// check if intersection is on s2
-	if (p.distanceFrom(s2[0]) > s2l)
+	if (p.distanceFrom(s2[0]) >= d2)
 		return null;
-	if (p.distanceFrom(s2[1]) > s2l)
+	if (p.distanceFrom(s2[1]) >= d2)
 		return null;
-	
-	if (s1.dimensions() == 2)
-		return $V([p.e(1), p.e(2)]);
 	
 	return p;
 }
@@ -393,7 +393,7 @@ function checkCombine(p0, p1, p2) {
 	if (
 		($L(p0, s1).distanceFrom(p2) < collinear_distance.value) ||	// co-linear
 		(s1.angleFrom(s2) < collinear_angle.value) ||								// co-linear (new point is close to line as previous segment)
-		(s1.angleFrom(s2) > (Math.PI - collinear_angle.value)) || // line turns back on itself
+		(s1.angleFrom(s2) > (Math.PI - collinear_angle.value)) || 	// line turns back on itself
 		(d0 < min_length.value) ||																	// segment will be too short
 		((d0 + d1) <= combine_length.value) ||											// two consecutive short segments
 		(d2 < combine_length.value) ||															// segment must double back on itself for p0 and p2 to be so close
@@ -431,6 +431,99 @@ function combineOptimisePath(path) {
 	}
 	
 	return newpath;
+}
+
+// eliminate spots where a path is 'inside out' due to polygon deflation
+function eliminatePathInverseLoops(paths) {
+	if (0) {
+		var tp = 0;
+		for (var i = 0; i < paths.length; i++) {
+			tp += paths[i].length;
+		}
+		
+		function pathIndex(i) {
+			var j = 0;
+			while(i >= paths[j].length)
+				i -= paths[j++].length;
+			return j;
+		}
+		function pointIndex(i) {
+			var j = 0;
+			while(i >= paths[j].length)
+				i -= paths[j++].length;
+			return i;
+		}
+		function pointAt(i) {	
+			var j = 0;
+			while(i >= paths[j].length)
+				i -= paths[j++].length;
+			return paths[j][i];
+		}
+		
+		// now we go through all our points and look for intersections
+		for (var k = 0; k < tp; k++) {
+			var p0 = pointAt((k + paths[pathIndex(k)].length - 1) % paths[pathIndex(k)].length);
+			var p1 = pointAt(k);
+			
+			for (var l = k; l < tp; l++) {
+				var p2 = pointAt(l);
+				var p3 = pointAt((l + 1) % paths[pathIndex(l)].length);
+				
+				var p = segmentIntersect([p0, p1], [p2, p3]);
+				
+				if (p != null) {
+					// segments intsersect, not just lines!
+					debugWrite("segment " +(k-1) + "->" + k + " (of " + tp + ") [" + pathIndex(k) + ":" + pointIndex(k) + "] intersects with " + l + "->" + (l + 1) + "[" + pathIndex(l) + ":" + pointIndex(l) + "] at [" + p.e(1) + "," + p.e(2) + "]\n");
+					if (pathIndex(k) == pathIndex(l)) {
+						// lines in same path, cut off a loop
+						
+					}
+				}
+			}
+		}
+	}
+	else {
+		var i = 0; while (i < paths.length) {
+			var path = paths[i];
+			var j = 0; while (j < path.length) {
+				var p0 = path[(j + path.length - 1) % path.length];
+				var p1 = path[j];
+				
+				var largestIntersector = j;
+				var largestIntersectorp;
+			
+				var k = (j + 1); while (k < path.length) {
+					var p2 = path[k];
+					var p3 = path[(k + 1) % path.length];
+					
+					if (!p1)
+						debugWrite("assert p1 undefined\n");
+					
+					var p = segmentIntersect([p0, p1], [p2, p3]);
+					
+					if (p) {
+						var largestIntersector = k;
+						largestIntersectorp = p;
+						
+						debugWrite("Path " + i + ": {" + j + "}[" + p0.e(1) + "," + p0.e(2) + "]-[" + p1.e(1) + "," + p1.e(2) + "] intersects {" + k + "}[" + p2.e(1) + "," + p2.e(2) + "]-[" + p3.e(1) + "," + p3.e(2) + "] at [" + p.e(1) + "," + p.e(2) + "]!\n");
+					}
+					k++;
+				}
+				
+				// mangle array, remove all points in the loop, rejoin flailing ends at our intersection
+				if (largestIntersector > j) {
+					paths[i][j] = largestIntersectorp;
+					debugWrite("Culling " + (largestIntersector - j) + " points starting at " + (j + 1) + "\n");
+					paths[i].splice(j + 1, largestIntersector - j);
+					j -= 1;
+				}
+				j++;
+			}
+			i++;
+		}
+	}
+	
+	return paths;
 }
 
 // takes a random collection of segments and creates one or more paths
@@ -478,6 +571,7 @@ function lines_to_paths(lines, fudge) {
 						// path is closed
 						
 						if (path.length > 3) {
+							// path = eliminatePathInverseLoops(path);
 							path = combineOptimisePath(path);
 							paths.push(path.slice(0, path.length));
 							debugWrite(" (" + paths.length + "paths)");
@@ -515,6 +609,8 @@ function lines_to_paths(lines, fudge) {
 	
 	debugWrite(" " + paths.length + " paths...");
 	
+	// eliminatePathInverseLoops(paths);
+	
 	layers[layer.value] = { outline: paths, shells: [] };
 	
 	for (var i = 0; i < shell_count.value; i++) {
@@ -535,11 +631,17 @@ function skeinShell(n) {
 		paths = layers[layer.value].shells[n - 1];
 		shrinkLevel = extrusionWidth;
 	}
-	layers[layer.value].shells[n] = [];
+	var shells = [];
 	for (var i = 0; i < paths.length; i++) {
 		var shell = shrinkPath(paths[i], extrusionWidth);
-		layers[layer.value].shells[n][i] = shell;
-	}
+		shells[i] = shell;
+	}	
+	
+	eliminatePathInverseLoops(shells);
+	for (var i = 0; i < shells.length; i++)
+		shells[i] = combineOptimisePath(shells[i]);
+
+	layers[layer.value].shells[n] = shells;
 }
 
 // this returns a new path set <distance> mm behind the supplied path.
@@ -572,16 +674,16 @@ function shrinkPath(path, distance) {
 		if (a < 0)
 			a += Math.PI * 2;
 
-		if (a > Math.PI - 0.1 && a < Math.PI + 0.1) {
+		//if (a > Math.PI - 0.1 && a < Math.PI + 0.1) {
 			// this algorithm breaks on corners where inner theta < 90
 			// it requires us to find overlaps and eliminate the extraneous loops
-			var n3 = n1.add(n2);
+		//	var n3 = n1.add(n2);
 			
-			var n = $V([n3.e(1), n3.e(2)]).toUnitVector();
+		//	var n = $V([n3.e(1), n3.e(2)]).toUnitVector();
 			
-			p = p1.add(n.multiply(-distance));
-		}
-		else {
+		//	p = p1.add(n.multiply(-distance));
+		//}
+		//else {
 			// this algorithm never makes loops, but may go 'outside the lines' at acute corners
 			// this algorithm barfs on collinear points that make it through the optimiser
 			n1 = $V([n1.e(1),n1.e(2)]).multiply(-distance);
@@ -592,10 +694,12 @@ function shrinkPath(path, distance) {
 			
 			p = ns1.intersectionWith(ns2);
 			
-			p = $V([p.e(1), p.e(2)]);
-		}
+			if (p)
+				p = $V([p.e(1), p.e(2)]);
+		//}
 		
-		newpath.push(p);
+		if (p)
+			newpath.push(p);
 	}
 	
 	return combineOptimisePath(newpath);
@@ -654,6 +758,9 @@ function drawLayer(n) {
 }
 
 function drawPath(path, colour, width) {
+	if (!path.length)
+		return;
+
 	var skeincanvas = $('sliceview');
 	var context = skeincanvas.getContext('2d');
 	
@@ -781,15 +888,17 @@ function pointInfo(x, y) {
 				var cpath = shellpaths[j];
 				for (var k = 0; k < cpath.length; k++) {
 					var point = cpath[k];
-					var pd = point.distanceFrom(p);
-					if (pd < d) {
-						cl = point;
-						d = pd;
-						gr = 'shells';
-						path = cpath;
-						shell_ind = i;
-						path_ind = j;
-						point_ind = k;
+					if (point) {
+						var pd = point.distanceFrom(p);
+						if (pd < d) {
+							cl = point;
+							d = pd;
+							gr = 'shells';
+							path = cpath;
+							shell_ind = i;
+							path_ind = j;
+							point_ind = k;
+						}
 					}
 				}
 			}
@@ -827,7 +936,7 @@ function pointInfo(x, y) {
 		if (a < 0)
 			a += Math.PI * 2;
 		
-		description += "Angle: " + (a * 180 / Math.PI).toFixed(2) + " degrees\n";
+		description += "Angle: " + (a * 180 / Math.PI).toFixed(2) + " degrees (" + s1.angleFrom(s2) + ")\n";
 		
 		description += "distance(p0,p2) = " + p2.distanceFrom(p0) + "\n";
 		
