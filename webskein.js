@@ -405,120 +405,6 @@ function checkCombine(p0, p1, p2) {
 	return p1;
 }
 	
-// takes a random collection of segments and creates one or more paths
-// since our lines' endpoints are in a specific winding order we can assume that p[1] connects to the next segment's p[0]
-// TODO: join collinear segments while we're at it
-function lines_to_paths(lines, fudge) {
-	var paths = new Array;
-	var cl; 		// current segment
-	var path;		// path under construction
-	var fp;			// find point
-	var i = 0, j = 0, k = 0;
-	
-	for (k = 0; (k < 3) && (lines.length > 0); k++) {
-		if (k > 0) {
-			debugWrite(' (try ' + (k + 1) + ' finding paths)');
-		}
-		i = 0;
-		cl = lines.splice((k * Math.random * lines.length) % lines.length, 1)[0];
-		path = [cl[0]];
-		fp = cl[1];
-		
-		while (i < lines.length) {
-			var tp = lines[i][0]; // test point
-			
-			if (tp.eql(fp)) {
-				// found the next segment
-				cl = lines.splice(i, 1)[0];
-				fp = cl[1];
-				
-				// combinatorial optimisations
-				if (0 && (path.length >= 1)) {
-					var p0 = path[path.length - 1];		// start of last segment
-					var p1 = cl[0];										// end of last segment/start of found segment (point found at tp.eql(fp) above)
-					var p2 = cl[1];										// end of found segment
-					
-					p1 = checkCombine(p0, p1, p2);
-					if (p1)
-						path.push(p1);
-				}
-				else
-					path.push(cl[0]);
-				
-				if (cl[1].eql(path[0])) {
-					// path is closed
-					
-					if (path.length > 3) {
-						if (0) {
-							// try to combine last segment with first
-							var p0 = path[path.length - 1];
-							var p1 = path[0];
-							var p2 = path[1];
-							
-							while (p0.eql(p1)) {
-								path.pop();
-								p0 = path[path.length - 1];
-							}
-						
-							if (checkCombine(p0, p1, p2) == null) {
-								// previous segment and this one are collinear or very short! combine!
-								path[0] = p0;
-								path.pop();
-							}
-						}
-						
-						paths.push(path.slice(0, path.length));
-						if (lines.length) {
-							cl = lines.splice(0, 1)[0];
-							path = [cl[0]];
-							fp = cl[1];
-						}
-					}
-					else
-						debugWrite("Closed Path with only " + path.length + " points found! discarding. ");
-				}
-				i = 0;
-			}
-			else {
-				i++;
-			}
-		}
-		if (lines.length) {
-			// couldn't close path
-			path.push(fp);
-			paths.push(path.slice(0, path.length));
-			cl = lines.splice(Math.floor(Math.random * lines.length), 1)[0];
-			path = [cl[0]];
-			fp = cl[1];
-		}
-	}
-	
-	if (lines.length) {
-		fudge += layer_height.value * 0.01;
-		debugWrite(" " + lines.length + ' lines found without a closed path! Trying reslice with layer offset +' + fudge + '... ');
-		return sliceLayer(fudge);
-	}
-	
-	debugWrite(" " + paths.length + " paths...");
-	
-	layers[layer.value] = { outline: paths, shells: [] };
-	
-	for (var i = 0; i < shell_count.value; i++) {
-		skeinShell(i);
-	}
-}
-
-// draw shell(s) inside the perimeter.
-// pass index of shell to draw
-function skeinShell(n) {
-	var paths = layers[layer.value].outline;
-	layers[layer.value].shells[n] = [];
-	for (var i = 0; i < paths.length; i++) {
-		var shell = shrinkPath(paths[i], (extrusionWidth * n) + (extrusionWidth / 2));
-		layers[layer.value].shells[n][i] = shell;
-	}
-}
-
 // check path for possible combine optimisations
 function combineOptimisePath(path) {
 	var newpath = path;
@@ -545,6 +431,115 @@ function combineOptimisePath(path) {
 	}
 	
 	return newpath;
+}
+
+// takes a random collection of segments and creates one or more paths
+// since our lines' endpoints are in a specific winding order we can assume that p[1] connects to the next segment's p[0]
+// TODO: join collinear segments while we're at it
+function lines_to_paths(lines, fudge) {
+	var paths = new Array;
+	var cl; 		// current segment
+	var path;		// path under construction
+	var fp;			// find point
+	var i = 0, j = 0, k = 0;
+	
+	for (k = 0; (k < 3) && (lines.length > 0); k++) {
+		if (k > 0) {
+			debugWrite(' (try ' + (k + 1) + ' finding paths)');
+		}
+		i = 0;
+		cl = lines.splice((k * Math.random * lines.length) % lines.length, 1)[0];
+		path = [cl[0]];
+		fp = cl[1];
+		var segcounter = 500;
+		var linefound;
+		
+		do {
+			linefound = 0;
+			i = 0;
+			while (i < lines.length) {
+				var tp = lines[i][0]; // test point
+				
+				if (tp.eql(fp)) {
+					// found the next segment
+					cl = lines.splice(i, 1)[0];
+					fp = cl[1];
+					linefound = 1;
+					
+					if (--segcounter == 0) {
+						debugWrite(" (" + lines.length + " segments remaining)");
+						segcounter = 500;
+					}
+					
+					// combinatorial optimisations
+					path.push(cl[0]);
+					
+					if (cl[1].eql(path[0])) {
+						// path is closed
+						
+						if (path.length > 3) {
+							path = combineOptimisePath(path);
+							paths.push(path.slice(0, path.length));
+							debugWrite(" (" + paths.length + "paths)");
+							if (lines.length) {
+								cl = lines.splice(0, 1)[0];
+								path = [cl[0]];
+								fp = cl[1];
+							}
+						}
+						else
+							debugWrite("Closed Path with only " + path.length + " points found! discarding. ");
+					}
+					// i = 0;
+				}
+				else
+					i++;
+			}
+		} while (linefound);
+		if (lines.length) {
+			// couldn't close path
+			path.push(fp);
+			path = combineOptimisePath(path);
+			paths.push(path.slice(0, path.length));
+			cl = lines.splice(Math.floor(Math.random * lines.length), 1)[0];
+			path = [cl[0]];
+			fp = cl[1];
+		}
+	}
+	
+	if (lines.length) {
+		fudge += layer_height.value * 0.01;
+		debugWrite(" " + lines.length + ' lines found without a closed path! Trying reslice with layer offset +' + fudge + '... ');
+		return sliceLayer(fudge);
+	}
+	
+	debugWrite(" " + paths.length + " paths...");
+	
+	layers[layer.value] = { outline: paths, shells: [] };
+	
+	for (var i = 0; i < shell_count.value; i++) {
+		skeinShell(i);
+	}
+}
+
+// draw shell(s) inside the perimeter.
+// pass index of shell to draw
+function skeinShell(n) {
+	var paths;
+	var shrinkLevel;
+	if (n == 0) {
+		paths = layers[layer.value].outline;
+		shrinkLevel = extrusionWidth / 2;
+	}
+	else {
+		paths = layers[layer.value].shells[n - 1];
+		shrinkLevel = extrusionWidth;
+	}
+	layers[layer.value].shells[n] = [];
+	for (var i = 0; i < paths.length; i++) {
+		var shell = shrinkPath(paths[i], extrusionWidth);
+		layers[layer.value].shells[n][i] = shell;
+	}
 }
 
 // this returns a new path set <distance> mm behind the supplied path.
