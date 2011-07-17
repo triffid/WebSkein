@@ -800,6 +800,9 @@ function pointInfo(x, y) {
 			}
 		}
 		
+		if (!path)
+			return;
+		
 		drawLayer(layer.value);
 		
 		// var path = layers[layer.value][gr][path_ind];
