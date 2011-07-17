@@ -271,7 +271,7 @@ function slice_nextLayer() {
 	drawLayer(layer.value);
 	if (layer.value > 0) {
 		layer.set(layer.value - 1)
-		sliceTimer = setTimeout(slice_nextLayer, 100);
+		sliceTimer = setTimeout(slice_nextLayer, 250);
 	}
 	else {
 		layer.set(0);
@@ -393,7 +393,7 @@ function checkCombine(p0, p1, p2) {
 	if (
 		($L(p0, s1).distanceFrom(p2) < collinear_distance.value) ||	// co-linear
 		(s1.angleFrom(s2) < collinear_angle.value) ||								// co-linear (new point is close to line as previous segment)
-		((s1.angleFrom(s2) < (Math.PI + collinear_angle.value)) && (s1.angleFrom(s2) > (Math.PI - collinear_angle.value))) || // line turns back on itself
+		(s1.angleFrom(s2) > (Math.PI - collinear_angle.value)) || // line turns back on itself
 		(d0 < min_length.value) ||																	// segment will be too short
 		((d0 + d1) <= combine_length.value) ||											// two consecutive short segments
 		(d2 < combine_length.value) ||															// segment must double back on itself for p0 and p2 to be so close
@@ -433,7 +433,7 @@ function lines_to_paths(lines, fudge) {
 				fp = cl[1];
 				
 				// combinatorial optimisations
-				if (path.length >= 1) {
+				if (0 && (path.length >= 1)) {
 					var p0 = path[path.length - 1];		// start of last segment
 					var p1 = cl[0];										// end of last segment/start of found segment (point found at tp.eql(fp) above)
 					var p2 = cl[1];										// end of found segment
@@ -449,7 +449,7 @@ function lines_to_paths(lines, fudge) {
 					// path is closed
 					
 					if (path.length > 3) {
-						if (1) {
+						if (0) {
 							// try to combine last segment with first
 							var p0 = path[path.length - 1];
 							var p1 = path[0];
@@ -522,17 +522,23 @@ function skeinShell(n) {
 // check path for possible combine optimisations
 function combineOptimisePath(path) {
 	var newpath = path;
-	var p0 = path.last();
-	for (var i = 0; i < path.length; i++) {
-		var p1 = path[i];
-		var p2 = path[(i + 1) % path.length];
-		
-		var p = checkCombine(p0,p1,p2);
-		if (!p)
-			newpath.splice(i, 1);
-		else
-			p0 = p;
-	}
+	var delta;
+	do {
+		delta = 0
+		var p0 = newpath.last();
+		for (var i = 0; i < path.length; i++) {
+			var p1 = path[i];
+			var p2 = path[(i + 1) % path.length];
+			
+			var p = checkCombine(p0,p1,p2);
+			if (!p) {
+				newpath.splice(i, 1);
+				delta++;
+			}
+			else
+				p0 = p;
+		}
+	} while (delta > 0);
 	
 	if (path.length > newpath.length) {
 		debugWrite("CombineOptimise dropped " + (path.length - newpath.length) + " points\n");
@@ -617,7 +623,7 @@ function drawLayer(n) {
 	var shells = layers[n].shells;
 	
 	var colours = [
-			[0,0,0],
+			[128,128,128],
 			[255,0,0],
 			[0,255,0],
 			[0,0,255],
@@ -628,7 +634,7 @@ function drawLayer(n) {
 
 	for (var j = 0; j < paths.length; j++) {
 		var path = paths[j];
-		drawPath(path, colours[0], 0.75);
+		drawPath(path, colours[0], 0.5);
 	}	
 	for (var j = 0; j < shells.length; j++) {
 		var shell = shells[j];
@@ -687,7 +693,7 @@ function drawPath(path, colour, width) {
 		
 		path.push(path[0]);	
 		for (var i = 1; i < path.length; i++) {
-			var vl = 1; // normal tick length, millimeters
+			var vl = 0.5; // normal tick length, millimeters
 			var p0 = path[i - 1];
 			var p1 = path[i];
 			var n = $V([p0.e(1) - p1.e(1), p0.e(2) - p1.e(2), 0]).cross($V([0, 0, 1])).toUnitVector().multiply(vl);
