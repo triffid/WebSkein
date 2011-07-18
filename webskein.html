@@ -244,12 +244,14 @@
 						skeincanvas.translationY += dY;
 					}
 					if (layers.length) {
-						pointInfo(e.elementX, e.elementY)
+						if (this.pointInfoTimer)
+							window.clearTimeout(this.pointInfoTimer);
+						this.pointInfoTimer = window.setTimeout(function () { pointInfo(e.elementX, e.elementY); }, 250);
 					}
 				});
 				skeincanvas.mousewheelhandler = function(e) {
-					e.stop();
 					if (layers[layer.value]) {
+						e.stop();
 						var x_start = xscale_invert(this.mousemoveX);
 						var y_start = yscale_invert(this.mousemoveY);
 						skeincanvas.scale += Event.wheel(e);

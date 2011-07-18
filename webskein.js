@@ -25,30 +25,25 @@ var extrusionWidth = 0.5;
 var modelWidth = 0;
 var modelHeight = 0;
 
-var top;
-var bottom;
-var left;
-var right;
-
 function xscale(x) {
-	return linearInterpolate(x, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF, left, right) + skeincanvas.translationX;
+	return linearInterpolate(x, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF, skeincanvas.drawleft, skeincanvas.drawright) + skeincanvas.translationX;
 }
 function yscale(y) {
-	return linearInterpolate(y, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF, top, bottom) + skeincanvas.translationY;
+	return linearInterpolate(y, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF, skeincanvas.drawtop, skeincanvas.drawbottom) + skeincanvas.translationY;
 }
 
 function wscale(w) {
-	return linearInterpolate(w, 0, (boundingBox[1].e(1) / skeincanvas.scaleF) - (boundingBox[0].e(1) / skeincanvas.scaleF), 0, right - left);
+	return linearInterpolate(w, 0, (boundingBox[1].e(1) / skeincanvas.scaleF) - (boundingBox[0].e(1) / skeincanvas.scaleF), 0, skeincanvas.drawright - skeincanvas.drawleft);
 }
 
 function xscale_invert(x) {
-	return linearInterpolate(x - skeincanvas.translationX, left, right, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF);
+	return linearInterpolate(x - skeincanvas.translationX, skeincanvas.drawleft, skeincanvas.drawright, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF);
 }
 function yscale_invert(y) {
-	return linearInterpolate(y - skeincanvas.translationY, top, bottom, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF);
+	return linearInterpolate(y - skeincanvas.translationY, skeincanvas.drawtop, skeincanvas.drawbottom, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF);
 }
 function wscale_invert(w) {
-	return linearInterpolate(w, 0, right - left, 0, (boundingBox[1].e(1) / skeincanvas.scaleF) - (boundingBox[0].e(1) / skeincanvas.scaleF));
+	return linearInterpolate(w, 0, skeincanvas.drawright - skeincanvas.drawleft, 0, (boundingBox[1].e(1) / skeincanvas.scaleF) - (boundingBox[0].e(1) / skeincanvas.scaleF));
 }
 
 
@@ -155,17 +150,17 @@ function checkModel() {
 
 			if ((modelWidth / modelHeight) > (skeincanvas.width / skeincanvas.height)) {
 				// model limited by width, cull heights
-				left = 5;
-				right = skeincanvas.width - 10;
-				top = (skeincanvas.height / 2) - (modelHeight * (skeincanvas.width - 10) / modelWidth / 2);
-				bottom = (skeincanvas.height / 2) + (modelHeight * (skeincanvas.width - 10) / modelWidth / 2);
+				skeincanvas.drawleft = 5;
+				skeincanvas.drawright = skeincanvas.width - 10;
+				skeincanvas.drawtop = (skeincanvas.height / 2) - (modelHeight * (skeincanvas.width - 10) / modelWidth / 2);
+				skeincanvas.drawbottom = (skeincanvas.height / 2) + (modelHeight * (skeincanvas.width - 10) / modelWidth / 2);
 			}
 			else {
 				// model limited by height
-				top = 5;
-				bottom = skeincanvas.height - 10;
-				left = (skeincanvas.width / 2) - (modelWidth * (skeincanvas.height - 10) / modelHeight / 2);
-				right = (skeincanvas.width / 2) + (modelWidth * (skeincanvas.height - 10) / modelHeight / 2);
+				skeincanvas.drawtop = 5;
+				skeincanvas.drawbottom = skeincanvas.height - 10;
+				skeincanvas.drawleft = (skeincanvas.width / 2) - (modelWidth * (skeincanvas.height - 10) / modelHeight / 2);
+				skeincanvas.drawright = (skeincanvas.width / 2) + (modelWidth * (skeincanvas.height - 10) / modelHeight / 2);
 			}
 			
 			//debugWrite("mapping [" + boundingBox[0].e(1) + "," + boundingBox[0].e(2) + "]-[" + boundingBox[1].e(1) + "," + boundingBox[1].e(2) + 
@@ -714,11 +709,9 @@ function drawLayer(n) {
 	//context.translate(skeincanvas.translationX, skeincanvas.translationY);
 	//context.scale(skeincanvas.scaleF, skeincanvas.scaleF);
 
-	var paths = layers[n].outline;
-	if (paths === undefined) {
+	if (!layers[n] || !layers[n].outline)
 		sliceLayer();
-		paths = layers[n].outline;
-	}
+	var paths = layers[n].outline;
 	var shells = layers[n].shells;
 	
 	var colours = [
@@ -761,7 +754,6 @@ function drawPath(path, colour, width) {
 	if (!path.length)
 		return;
 
-	var skeincanvas = $('sliceview');
 	var context = skeincanvas.getContext('2d');
 	
 	if (!width)
@@ -851,8 +843,10 @@ function drawPath(path, colour, width) {
 
 function pointInfo(x, y) {
 	if (layers[layer.value]) {
-		var lx = linearInterpolate(x - skeincanvas.translationX, left, right, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF);
-		var ly = linearInterpolate(y - skeincanvas.translationY, top, bottom, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF);
+		// var lx = linearInterpolate(x - skeincanvas.translationX, left, right, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF);
+		// var ly = linearInterpolate(y - skeincanvas.translationY, top, bottom, boundingBox[0].e(2) / skeincanvas.scaleF, boundingBox[1].e(2) / skeincanvas.scaleF);
+		var lx = xscale_invert(x);
+		var ly = yscale_invert(y);
 		
 		var p = $V([lx, ly]);
 		
