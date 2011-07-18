@@ -246,7 +246,7 @@
 					if (layers.length) {
 						if (this.pointInfoTimer)
 							window.clearTimeout(this.pointInfoTimer);
-						this.pointInfoTimer = window.setTimeout(function () { pointInfo(e.elementX, e.elementY); }, 250);
+						this.pointInfoTimer = window.setTimeout(function () { pointInfo(e.elementX, e.elementY); }, 50);
 					}
 				});
 				skeincanvas.mousewheelhandler = function(e) {
