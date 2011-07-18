@@ -242,11 +242,15 @@
 					if (this.mousedown) {
 						skeincanvas.translationX += dX;
 						skeincanvas.translationY += dY;
+						if (layers.length) {
+							// panning, draw
+							drawLayer(layer.value);
+						}
 					}
-					if (layers.length) {
+					else if (layers.length) {
 						if (this.pointInfoTimer)
 							window.clearTimeout(this.pointInfoTimer);
-						this.pointInfoTimer = window.setTimeout(function () { pointInfo(e.elementX, e.elementY); }, 50);
+						this.pointInfoTimer = window.setTimeout(function () { pointInfo(e.elementX, e.elementY); }, 100);
 					}
 				});
 				skeincanvas.mousewheelhandler = function(e) {
