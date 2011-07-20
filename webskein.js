@@ -359,7 +359,7 @@ function sliceLayer() {
 			}
 		}
 		
-		debugWrite(' ' + lines.length + ' segments...');
+		debugWrite(' (' + lines.length + ' segments)');
 		
 		lines_to_paths(lines, fudgeFactor);
 
@@ -478,41 +478,98 @@ function eliminatePathInverseLoops(paths) {
 		}
 	}
 	else {
-		var i = 0; while (i < paths.length) {
+		var i = 0;
+		while (i < paths.length) {
 			var path = paths[i];
-			var j = 0; while (j < path.length) {
+			var j = 0;
+			
+			var lastIntersectorJ = -1;
+			var lastIntersectorK = -1;
+			var lastIntersectorP;
+			var outside = 0;
+			
+			while (j < path.length) {
 				var p0 = path[(j + path.length - 1) % path.length];
 				var p1 = path[j];
-				
-				var largestIntersector = j;
-				var largestIntersectorp;
-			
-				var k = (j + 1); while (k < path.length) {
+				if (!p0)
+					debugWrite("ASSERT p0 undefined!\n");
+				if (!p1)
+					debugWrite("ASSERT p1 undefined!\n");
+									
+				var k = (j + 1);
+				while (k < path.length) {
 					var p2 = path[k];
 					var p3 = path[(k + 1) % path.length];
-					
-					if (!p1)
-						debugWrite("assert p1 undefined\n");
 					
 					var p = segmentIntersect([p0, p1], [p2, p3]);
 					
 					if (p) {
-						var largestIntersector = k;
-						largestIntersectorp = p;
+						debugWrite("\nPath " + i + ": {" + j + "}" + p0 + "-" + p1 + " intersects {" + k + "}" + p2+ "-" + p3 + " at " + p + "!");
 						
-						debugWrite("Path " + i + ": {" + j + "}[" + p0.e(1) + "," + p0.e(2) + "]-[" + p1.e(1) + "," + p1.e(2) + "] intersects {" + k + "}[" + p2.e(1) + "," + p2.e(2) + "]-[" + p3.e(1) + "," + p3.e(2) + "] at [" + p.e(1) + "," + p.e(2) + "]!\n");
+						// debug draw!
+						if (1) {
+							layers[layer.value].shells.push(paths);
+							layers[layer.value].intersections = [p];
+							drawLayer(layer.value);
+							layers[layer.value].shells.pop();
+							// break here!
+							p = p;
+						}
+						
+						if ((outside == 1) && (lastIntersectorK >= k)) {
+							// cull loop
+							debugWrite(" Closing path at {" + lastIntersectorJ + "} resuming at {" + (lastIntersectorK + 1) + "} and creating new path from {" + (j + 1) + "} to {" + k + "} ");
+							var newPath = path.slice(j, k + 1);
+							newPath.push(p);
+							path[lastIntersectorJ] = lastIntersectorP;
+							path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
+							
+							paths[i] = path;
+							paths.push(newPath);
+							
+							outside = 0;
+							lastIntersectorJ = -1;
+							lastIntersectorK = -1;
+							lastIntersectorP = null;
+							
+							// force re-check of spliced junction
+							j--;
+							k = path.length;
+						}
+						else if (outside) {
+							debugWrite("Culling " + (lastIntersectorK - lastIntersectorJ) + " points starting at " + (lastIntersectorJ + 1) + "\n");
+
+							path[lastIntersectorJ] = lastIntersectorP;
+							path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
+
+							paths[i] = path;
+
+							outside = 1;
+							lastIntersectorJ = j;
+							lastIntersectorK = k;
+							latIntersectorP = p;
+							// force re-check of spliced junction
+							j--;
+							k = path.length;
+						}
+						else {
+							outside = 1;
+							lastIntersectorJ = j;
+							lastIntersectorK = k;
+							lastIntersectorP = p;
+						}
 					}
 					k++;
 				}
-				
-				// mangle array, remove all points in the loop, rejoin flailing ends at our intersection
-				if (largestIntersector > j) {
-					paths[i][j] = largestIntersectorp;
-					debugWrite("Culling " + (largestIntersector - j) + " points starting at " + (j + 1) + "\n");
-					paths[i].splice(j + 1, largestIntersector - j);
-					j -= 1;
-				}
 				j++;
+			}
+			// mangle array, remove all points in the loop, rejoin flailing ends at our intersection
+			if (outside) {
+				path[lastIntersectorJ] = lastIntersectorP;
+				debugWrite("tail-Culling " + (lastIntersectorK - lastIntersectorJ) + " points starting at " + (lastIntersectorJ + 1) + "\n");
+				path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
+				paths[i] = path;
+				outside = 0;
 			}
 			i++;
 		}
@@ -569,7 +626,7 @@ function lines_to_paths(lines, fudge) {
 							// path = eliminatePathInverseLoops(path);
 							path = combineOptimisePath(path);
 							paths.push(path.slice(0, path.length));
-							debugWrite(" (" + paths.length + "paths)");
+							debugWrite(" (" + paths.length + " paths)");
 							if (lines.length) {
 								cl = lines.splice(0, 1)[0];
 								path = [cl[0]];
@@ -602,14 +659,14 @@ function lines_to_paths(lines, fudge) {
 		return sliceLayer(fudge);
 	}
 	
-	debugWrite(" " + paths.length + " paths...");
-	
 	// eliminatePathInverseLoops(paths);
 	
 	layers[layer.value] = { outline: paths, shells: [] };
 	
 	for (var i = 0; i < shell_count.value; i++) {
+		debugWrite(" (" + (i + 1) + " shells");
 		skeinShell(i);
+		debugWrite(")");
 	}
 }
 
@@ -632,9 +689,11 @@ function skeinShell(n) {
 		shells[i] = shell;
 	}	
 	
-	eliminatePathInverseLoops(shells);
-	for (var i = 0; i < shells.length; i++)
+	shells = eliminatePathInverseLoops(shells);
+	for (var i = 0; i < shells.length; i++) {
 		shells[i] = combineOptimisePath(shells[i]);
+	}
+	debugWrite(", optimised");
 
 	layers[layer.value].shells[n] = shells;
 }
@@ -713,6 +772,7 @@ function drawLayer(n) {
 		sliceLayer();
 	var paths = layers[n].outline;
 	var shells = layers[n].shells;
+	var intersections = layers[n].intersections;
 	
 	var colours = [
 			[128,128,128],
@@ -724,15 +784,37 @@ function drawLayer(n) {
 			[0,255,255]
 		];
 
-	for (var j = 0; j < paths.length; j++) {
-		var path = paths[j];
-		drawPath(path, colours[0], 0.5);
-	}	
-	for (var j = 0; j < shells.length; j++) {
-		var shell = shells[j];
-		for (var i = 0; i < shell.length; i++) {
-			var path = shell[i];
-			drawPath(path, colours[(j % (colours.length - 2)) + 1], wscale(extrusionWidth));
+	if (paths) {
+		for (var j = 0; j < paths.length; j++) {
+			var path = paths[j];
+			drawPath(path, colours[0], 0.5);
+		}
+	}
+	if (shells) {
+		for (var j = 0; j < shells.length; j++) {
+			var shell = shells[j];
+			for (var i = 0; i < shell.length; i++) {
+				var path = shell[i];
+				drawPath(path, colours[(j % (colours.length - 2)) + 1], wscale(extrusionWidth));
+			}
+		}
+	}
+	if (intersections) {
+		for (var j = 0; j < intersections.length; j++) {
+			var p = intersections[j];
+			var x = xscale(p.e(1));
+			var y = yscale(p.e(2));
+			var xl = 3;
+			context.save();
+				context.lineWidth = 1;
+				context.strokeStyle = "rgba(128,0,0,0.5)";
+				context.beginPath();
+				context.moveTo(x - xl, y - xl);
+				context.lineTo(x + xl, y + xl);
+				context.moveTo(x - xl, y + xl);
+				context.lineTo(x + xl, y - xl);
+				context.stroke();
+			context.restore();
 		}
 	}
 	
