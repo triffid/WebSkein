@@ -459,10 +459,10 @@ function eliminatePathInverseLoops(paths) {
 					p = null;
 				
 				if (p) {
-					debugWrite("\nPath " + i + ": {" + j + "}" + p0 + "-" + p1 + " intersects {" + k + "}" + p2+ "-" + p3 + " at " + p + "!");
+					debugWrite("\nPath " + i + ": {" + (j - 1) + "-" + j + "}" + p0 + "-" + p1 + " intersects {" + k + "-" + (k + 1) + "}" + p2+ "-" + p3 + " at " + p + "!");
 					
 					// debug draw!
-					if (1) {
+					if (0) {
 						layers[layer.value].shells.push(paths);
 						if (layers[layer.value].intersections)
 							layers[layer.value].intersections.push(p);
@@ -474,15 +474,26 @@ function eliminatePathInverseLoops(paths) {
 						p = p;
 					}
 					
-					if ((outside == 1) && (lastIntersectorK >= k) && ((k - j) >= 2)) {
+					if ((outside == 1) && (lastIntersectorK >= j)) {
 						// cull loop
-						debugWrite(" Closing path at {" + lastIntersectorJ + "} resuming at {" + (lastIntersectorK + 1) + "} and creating new path from {" + (j + 1) + "} to {" + k + "} ");
-						var newPath = [p].concat(path.slice(j, k + 1));
+						debugWrite(" Closing path at {" + (lastIntersectorJ) + "} resuming at {" + (k + 1) + "} and creating new path from {" + j + "} to {" + lastIntersectorK + "} ");
+						
+						if (j == lastIntersectorJ) {
+							// swap p0 and p1, because if the whole loop intersects j then we see the end of the first loop first, instead of the start of the 2nd loop which is what we see first if j > lastJ
+							var px = p;
+							p = lastIntersectorP;
+							lastIntersectorP = px;
+						}
+
+						var newPath = [p];
+						Array.prototype.push.apply(newPath, path.slice(j, lastIntersectorK + 1));
+
 						path[lastIntersectorJ] = lastIntersectorP;
-						path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
+						path.splice(lastIntersectorJ + 1, k - lastIntersectorJ);
 						
 						paths[i] = path;
-						paths.push(newPath);
+						if (newPath.length >= 3)
+							paths.push(newPath);
 						
 						outside = 0;
 						lastIntersectorJ = -1;
@@ -525,8 +536,8 @@ function eliminatePathInverseLoops(paths) {
 		if (outside) {
 			debugWrite("tail-Culling " + (lastIntersectorK - lastIntersectorJ) + " points starting at " + (lastIntersectorJ + 1) + "\n");
 			
-			path[lastIntersectorJ] = lastIntersectorP;
-			path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
+			//path[lastIntersectorJ] = lastIntersectorP;
+			//path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
 			
 			paths[i] = path;
 			outside = 0;
