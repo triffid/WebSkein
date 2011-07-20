@@ -5,7 +5,7 @@ Vector.prototype.toString = function() {
 	var r = "[";
 	for (var i = 0; i < this.elements.length; i++) {
 		if (i > 0)
-			r += "-";
+			r += ",";
 		r += this.elements[i].toFixed(2);
 	}
 	return r + "]";
@@ -51,9 +51,9 @@ Segment.prototype = {
 		};
 		
 		// point is on our line, now check if it's within our segment
-		if (between_inc(v1.element[0], o.element[0], v2.element[0]) && 
-				between_inc(v1.element[1], o.element[1], v2.element[1]) && 
-				between_inc(v1.element[2], o.element[2], v2.element[2]))
+		if (between_inc(this.v1.elements[0], o.elements[0], this.v2.elements[0]) && 
+				between_inc(this.v1.elements[1], o.elements[1], this.v2.elements[1]) && 
+				between_inc(this.v1.elements[2], o.elements[2], this.v2.elements[2]))
 			return true;
 		return null;
 	},
@@ -128,6 +128,10 @@ Segment.prototype = {
 		return null;
 	},
 	
+	translate: function(v) {
+		return new Segment(this.v1.add(v), this.v2.add(v));
+	},
+	
 	// set segment's anchor and endpoint, calculate direction etc
 	setVectors: function(v1, v2) {
 		v1 = Vector.create(v1);
@@ -141,7 +145,7 @@ Segment.prototype = {
 		this.endpoint = v2;
 		this.v1 = v1;
 		this.v2 = v2;
-		this.line = new Line(v1,v2.subtract(v1));
+		this.line = Line.create(v1,v2.subtract(v1));
 		// supply anchor/direction so we can interact with other parts of sylvester
 		this.anchor = this.line.anchor;
 		this.direction = this.line.direction;
