@@ -430,151 +430,110 @@ function combineOptimisePath(path) {
 
 // eliminate spots where a path is 'inside out' due to polygon deflation
 function eliminatePathInverseLoops(paths) {
-	if (0) {
-		var tp = 0;
-		for (var i = 0; i < paths.length; i++) {
-			tp += paths[i].length;
-		}
+	var i = 0;
+	while (i < paths.length) {
+		var path = paths[i];
 		
-		function pathIndex(i) {
-			var j = 0;
-			while(i >= paths[j].length)
-				i -= paths[j++].length;
-			return j;
-		}
-		function pointIndex(i) {
-			var j = 0;
-			while(i >= paths[j].length)
-				i -= paths[j++].length;
-			return i;
-		}
-		function pointAt(i) {	
-			var j = 0;
-			while(i >= paths[j].length)
-				i -= paths[j++].length;
-			return paths[j][i];
-		}
+		var lastIntersectorJ = -1;
+		var lastIntersectorK = -1;
+		var lastIntersectorP;
+		var outside = 0;
 		
-		// now we go through all our points and look for intersections
-		for (var k = 0; k < tp; k++) {
-			var p0 = pointAt((k + paths[pathIndex(k)].length - 1) % paths[pathIndex(k)].length);
-			var p1 = pointAt(k);
-			
-			for (var l = k; l < tp; l++) {
-				var p2 = pointAt(l);
-				var p3 = pointAt((l + 1) % paths[pathIndex(l)].length);
+		var j = 0;
+		while (j < path.length) {
+			var p0 = path[(j + path.length - 1) % path.length];
+			var p1 = path[j];
+			if (!p0)
+				debugWrite("ASSERT p0 undefined!\n");
+			if (!p1)
+				debugWrite("ASSERT p1 undefined!\n");
+								
+			var k = j + 1;
+			while (k < path.length) {
+				var p2 = path[k % path.length];
+				var p3 = path[(k + 1) % path.length];
 				
 				var p = segmentIntersect([p0, p1], [p2, p3]);
 				
-				if (p != null) {
-					// segments intsersect, not just lines!
-					debugWrite("segment " +(k-1) + "->" + k + " (of " + tp + ") [" + pathIndex(k) + ":" + pointIndex(k) + "] intersects with " + l + "->" + (l + 1) + "[" + pathIndex(l) + ":" + pointIndex(l) + "] at [" + p.e(1) + "," + p.e(2) + "]\n");
-					if (pathIndex(k) == pathIndex(l)) {
-						// lines in same path, cut off a loop
-						
-					}
-				}
-			}
-		}
-	}
-	else {
-		var i = 0;
-		while (i < paths.length) {
-			var path = paths[i];
-			var j = 0;
-			
-			var lastIntersectorJ = -1;
-			var lastIntersectorK = -1;
-			var lastIntersectorP;
-			var outside = 0;
-			
-			while (j < path.length) {
-				var p0 = path[(j + path.length - 1) % path.length];
-				var p1 = path[j];
-				if (!p0)
-					debugWrite("ASSERT p0 undefined!\n");
-				if (!p1)
-					debugWrite("ASSERT p1 undefined!\n");
-									
-				var k = (j + 1);
-				while (k < path.length) {
-					var p2 = path[k];
-					var p3 = path[(k + 1) % path.length];
+				if (p0.eql(p3))
+					p = null;
+				
+				if (p) {
+					debugWrite("\nPath " + i + ": {" + j + "}" + p0 + "-" + p1 + " intersects {" + k + "}" + p2+ "-" + p3 + " at " + p + "!");
 					
-					var p = segmentIntersect([p0, p1], [p2, p3]);
-					
-					if (p) {
-						debugWrite("\nPath " + i + ": {" + j + "}" + p0 + "-" + p1 + " intersects {" + k + "}" + p2+ "-" + p3 + " at " + p + "!");
-						
-						// debug draw!
-						if (1) {
-							layers[layer.value].shells.push(paths);
+					// debug draw!
+					if (1) {
+						layers[layer.value].shells.push(paths);
+						if (layers[layer.value].intersections)
+							layers[layer.value].intersections.push(p);
+						else
 							layers[layer.value].intersections = [p];
-							drawLayer(layer.value);
-							layers[layer.value].shells.pop();
-							// break here!
-							p = p;
-						}
-						
-						if ((outside == 1) && (lastIntersectorK >= k)) {
-							// cull loop
-							debugWrite(" Closing path at {" + lastIntersectorJ + "} resuming at {" + (lastIntersectorK + 1) + "} and creating new path from {" + (j + 1) + "} to {" + k + "} ");
-							var newPath = path.slice(j, k + 1);
-							newPath.push(p);
-							path[lastIntersectorJ] = lastIntersectorP;
-							path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
-							
-							paths[i] = path;
-							paths.push(newPath);
-							
-							outside = 0;
-							lastIntersectorJ = -1;
-							lastIntersectorK = -1;
-							lastIntersectorP = null;
-							
-							// force re-check of spliced junction
-							j--;
-							k = path.length;
-						}
-						else if (outside) {
-							debugWrite("Culling " + (lastIntersectorK - lastIntersectorJ) + " points starting at " + (lastIntersectorJ + 1) + "\n");
-
-							path[lastIntersectorJ] = lastIntersectorP;
-							path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
-
-							paths[i] = path;
-
-							outside = 1;
-							lastIntersectorJ = j;
-							lastIntersectorK = k;
-							latIntersectorP = p;
-							// force re-check of spliced junction
-							j--;
-							k = path.length;
-						}
-						else {
-							outside = 1;
-							lastIntersectorJ = j;
-							lastIntersectorK = k;
-							lastIntersectorP = p;
-						}
+						drawLayer(layer.value);
+						layers[layer.value].shells.pop();
+						// break here!
+						p = p;
 					}
-					k++;
+					
+					if ((outside == 1) && (lastIntersectorK >= k) && ((k - j) >= 2)) {
+						// cull loop
+						debugWrite(" Closing path at {" + lastIntersectorJ + "} resuming at {" + (lastIntersectorK + 1) + "} and creating new path from {" + (j + 1) + "} to {" + k + "} ");
+						var newPath = [p].concat(path.slice(j, k + 1));
+						path[lastIntersectorJ] = lastIntersectorP;
+						path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
+						
+						paths[i] = path;
+						paths.push(newPath);
+						
+						outside = 0;
+						lastIntersectorJ = -1;
+						lastIntersectorK = -1;
+						lastIntersectorP = null;
+						//layers[layer.value].intersections = [];
+						
+						// force re-check of spliced junction
+						j--;
+						k = path.length;
+					}
+					else if (outside) {
+						debugWrite("Culling " + (lastIntersectorK - lastIntersectorJ) + " points starting at " + (lastIntersectorJ + 1) + "\n");
+
+						path[lastIntersectorJ] = lastIntersectorP;
+						path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
+
+						paths[i] = path;
+
+						outside = 0;
+						lastIntersectorJ = -1;
+						lastIntersectorK = -1;
+						latIntersectorP = null;
+						// force re-check of spliced junction
+						j--;
+						k = path.length;
+					}
+					else {
+						outside = 1;
+						lastIntersectorJ = j;
+						lastIntersectorK = k;
+						lastIntersectorP = p;
+					}
 				}
-				j++;
+				k++;
 			}
-			// mangle array, remove all points in the loop, rejoin flailing ends at our intersection
-			if (outside) {
-				path[lastIntersectorJ] = lastIntersectorP;
-				debugWrite("tail-Culling " + (lastIntersectorK - lastIntersectorJ) + " points starting at " + (lastIntersectorJ + 1) + "\n");
-				path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
-				paths[i] = path;
-				outside = 0;
-			}
-			i++;
+			j++;
 		}
+		// mangle array, remove all points in the loop, rejoin flailing ends at our intersection
+		if (outside) {
+			debugWrite("tail-Culling " + (lastIntersectorK - lastIntersectorJ) + " points starting at " + (lastIntersectorJ + 1) + "\n");
+			
+			path[lastIntersectorJ] = lastIntersectorP;
+			path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
+			
+			paths[i] = path;
+			outside = 0;
+		}
+		i++;
 	}
-	
+
 	return paths;
 }
 
