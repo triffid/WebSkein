@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Straight Skeleton</title>
+		<script type="text/javascript" src="sylvester/sylvester.src.js"></script>
+		<script type="text/javascript" src="sylvester/sylvester_ext.js"></script>
+		<script type="text/javascript" src="prototype.js"></script>
+		<script type="text/javascript" src="drawcanvas.js"></script>
+		<script type="text/javascript" src="skelvertex.js"></script>
+		<script type="text/javascript" src="skel.js"></script>
+	</head>
+	<body>
+		<canvas id="viewcanvas" style="border: 1px inset; float: left;" width="400" height="300"></canvas>
+		<input id="skelbutton" type="button" value="Skeleton" /><br />
+		<textarea id="pointInfoTxt" rows="30" columns="40"></textarea>
+
+		<script type="text/javascript">
+			var skeincanvas;
+			var skelbutton;
+			Event.observe(document, "dom:loaded", function() {
+				skeincanvas = $('viewcanvas');
+				skelbutton = $('skelbutton');
+				
+				Object.extend(Event, {
+        	wheel:function (event){
+          	var delta = 0;
+          	if (!event) event = window.event;
+          	if (event.wheelDelta) {
+            	delta = event.wheelDelta/120; 
+          	}
+						else if (event.detail) {
+							delta = -event.detail/3;
+						}
+          	return Math.round(delta); //Safari Round
+        	}
+      	});
+      	
+      	skelbutton.observe("click", function(e) {
+      		setTimeout(function() {
+		     		buildPathDataMap();
+      			runSkeletonEvents();
+      			drawcanvas();
+      		}, 500);
+      	});
+				
+				skeincanvas.observe("mousedown", function(e) {
+  				if (e.isLeftClick()) {
+    				e.elementX = e.pointerX() - e.element().offsetLeft;
+    				e.elementY = e.pointerY() - e.element().offsetTop;
+    				this.mousedownX = e.elementX;
+    				this.mousedownY = e.elementY;
+    				this.translation_startX = e.elementX;
+    				this.translation_startY = e.elementY;
+    				this.mousedown = 1;
+  				}
+				});
+				
+				skeincanvas.observe("mouseup", function(e) {
+  				e.elementX = e.pointerX() - e.element().offsetLeft;
+  				e.elementY = e.pointerY() - e.element().offsetTop;
+  				if (this.mousedown) {
+    				this.mousedown = 0;
+    				if ((e.elementX == this.mousedownX) && (e.elementY == this.mousedownY)) {
+      				if ((e.elementX < 20) && (e.elementY < 20)) { //>
+        				skeincanvas.translationX = 0;
+        				skeincanvas.translationY = 0;
+        				skeincanvas.scale = 0; 
+        				skeincanvas.scaleF = 1;
+         				drawcanvas;
+      				}
+    				}
+  				}
+				});
+				
+				skeincanvas.observe("mousemove", function(e) {
+					e.elementX = e.pointerX() - e.element().offsetLeft;
+					e.elementY = e.pointerY() - e.element().offsetTop;
+					var dX = e.elementX - this.mousemoveX;
+					var dY = e.elementY - this.mousemoveY;
+					this.mousemoveX = e.elementX;
+					this.mousemoveY = e.elementY;
+					if (this.mousedown) {   
+						skeincanvas.translationX += dX;
+						skeincanvas.translationY += dY;
+						drawcanvas();
+					}
+					else {
+						try {
+							if (pointInfo) {
+								if (this.pointInfoTimer)
+									window.clearTimeout(this.pointInfoTimer);
+								this.pointInfoTimer = window.setTimeout(function () { pointInfo(e.elementX, e.elementY); }, 100);
+							}
+						}
+						catch (e) {
+						}
+					}
+				});
+				
+				skeincanvas.mousewheelhandler = function(e) {
+					e.stop();
+					
+					var x_start = xscale_invert(this.mousemoveX);
+					var y_start = yscale_invert(this.mousemoveY);
+					
+					skeincanvas.scale += Event.wheel(e);
+					skeincanvas.scaleF = Math.pow(Math.E, skeincanvas.scale / 10);
+					
+					// translate, so we scale as if mousecursor is origin for nice zoom effect
+					skeincanvas.translationX += this.mousemoveX - xscale(x_start);
+					skeincanvas.translationY += this.mousemoveY - yscale(y_start);
+					
+					drawcanvas();
+				}
+				
+				skeincanvas.observe("mousewheel", skeincanvas.mousewheelhandler);
+				skeincanvas.observe("DOMMouseScroll", skeincanvas.mousewheelhandler);
+			});
+			Event.observe(window, "load", function() {
+				findBounds();
+     		buildPathDataMap();
+     		drawcanvas();
+			});
+		</script>
+	</body>
+</html>
