@@ -25,6 +25,11 @@ var extrusionWidth = 0.5;
 var modelWidth = 0;
 var modelHeight = 0;
 
+// basic linear interpolation routine
+function linearInterpolate(value, oldmin, oldmax, newmin, newmax) {
+	return (value - oldmin) * (newmax - newmin) / (oldmax - oldmin) + newmin;
+}
+
 function xscale(x) {
 	return linearInterpolate(x, boundingBox[0].e(1) / skeincanvas.scaleF, boundingBox[1].e(1) / skeincanvas.scaleF, skeincanvas.drawleft, skeincanvas.drawright) + skeincanvas.translationX;
 }
@@ -245,11 +250,6 @@ function jsc3d_to_sylvester() {
 	return triangles.length;
 }
 
-// basic linear interpolation routine
-function linearInterpolate(value, oldmin, oldmax, newmin, newmax) {
-	return (value - oldmin) * (newmax - newmin) / (oldmax - oldmin) + newmin;
-}
-
 // slice the whole model, one layer at a time
 function sliceModel() {
 	calcLayers();
@@ -431,6 +431,7 @@ function combineOptimisePath(path) {
 // eliminate spots where a path is 'inside out' due to polygon deflation
 function eliminatePathInverseLoops(paths) {
 	var i = 0;
+	var newpaths = [];
 	while (i < paths.length) {
 		var path = paths[i];
 		
@@ -474,7 +475,7 @@ function eliminatePathInverseLoops(paths) {
 						p = p;
 					}
 					
-					if ((outside == 1) && (lastIntersectorK >= j)) {
+					if ((outside == 1) && (lastIntersectorK >= (j + 1))) {
 						// cull loop
 						debugWrite(" Closing path at {" + (lastIntersectorJ) + "} resuming at {" + (k + 1) + "} and creating new path from {" + j + "} to {" + lastIntersectorK + "} ");
 						
@@ -536,15 +537,19 @@ function eliminatePathInverseLoops(paths) {
 		if (outside) {
 			debugWrite("tail-Culling " + (lastIntersectorK - lastIntersectorJ) + " points starting at " + (lastIntersectorJ + 1) + "\n");
 			
-			path[lastIntersectorJ] = lastIntersectorP;
+			/*path[lastIntersectorJ] = lastIntersectorP;
 			path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
-			
-			paths[i] = path;
+			if (path.length < 3) {
+				paths.splice(i, 1);
+				i--;
+			}
+			else
+				paths[i] = path;*/
 			outside = 0;
 		}
 		i++;
 	}
-
+	
 	return paths;
 }
 
@@ -629,6 +634,25 @@ function lines_to_paths(lines, fudge) {
 		return sliceLayer(fudge);
 	}
 	
+	try {
+		if (dout) {
+			var r = "[";
+			for (var i = 0, l = paths.length; i < l; i++) { //>
+				r += "[ ";
+				var path = paths[i];
+				for (var j = 0, m = path.length; j < m; j++) { //>
+					var point = path[j];
+					r += point.toString() + ",";
+				}
+				r = r.substr(r, r.length - 1) + "],";
+			}
+			r = r.substr(r, r.length - 1) + "]";
+			dout.value = r;
+		}
+	}
+	catch (e) {
+	}
+
 	// eliminatePathInverseLoops(paths);
 	
 	layers[layer.value] = { outline: paths, shells: [] };
@@ -683,6 +707,8 @@ function skeinShell(n) {
 
 function shrinkPath(path, distance) {
 	var newpath = [];
+	if (!path || path.length < 3)
+		return null;
 	var p0 = path.last();
 	var p1 = path[0];
 	var s1 = p1.subtract(p0);

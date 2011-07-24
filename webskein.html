@@ -91,6 +91,7 @@
 				<textarea id="pointinfo" rows="12" cols="30" style="width: 100%;">blah</textarea>
 			</div>
 			<textarea id="debug" rows="10" cols="81" style="width: 100%;"></textarea>
+			<textarea id="dout" rows="10" cols="81" style="width: 100%;"></textarea>
 		</form>
 		<script type="text/javascript">
 			var slice_btn = $('slice_btn');
@@ -105,6 +106,8 @@
 				skeincanvas.scaleF = 1;
 			
 			var debug = $('debug');
+			
+			var dout = $('dout');
 			
 			var getopt = [];
 			var getopt_hash = [];
@@ -197,6 +200,21 @@
 					updateHash();
 					sliceLayer();
 					drawLayer(layer.value);
+					if (dout) {
+						var r = "[";
+						var paths = layers[layer.value].outline;
+						for (var i = 0, l = paths.length; i < l; i++) { //>
+							r += "[ ";
+							var path = paths[i];
+							for (var j = 0, m = path.length; j < m; j++) { //>
+								var point = path[j];
+								r += point.toString() + ",";
+							}
+							r = r.substr(r, r.length - 1) + "],";
+						}
+						r = r.substr(r, r.length - 1) + "]";
+						dout.value = r;
+					}
 				}
 				
 				draw_layer_btn.onclick = function() {
