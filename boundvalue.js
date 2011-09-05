@@ -10,7 +10,7 @@ function boundValue(inputElement, defaultValue, min, max, integer) {
 	this.max = max;
 	this.min = min;
 	this.integer = integer;
-	
+
 	this.input.observe('blur', function(e) {
 		try {
 			self.set(this.value);
@@ -24,11 +24,11 @@ function boundValue(inputElement, defaultValue, min, max, integer) {
 			this.focus();
 		}
 	});
-	
+
 	this.input.observe('change', function(e) {
 		this.style.backgroundColor = self.normalBackground;
 	});
-	
+
 	this.checkValue = function(newvalue) {
 		if (!isNaN(newvalue) && isFinite(newvalue)) {
 			if (!isNaN(self.max) && newvalue > self.max) {
@@ -41,32 +41,34 @@ function boundValue(inputElement, defaultValue, min, max, integer) {
 			}
 			if (integer)
 				newvalue = parseInt(newvalue);
+			else
+				newvalue = parseFloat(newvalue);
 			return newvalue;
 		}
 		else
 			throw newvalue + " is not numeric!";
 	}
-	
+
 	this.set = function(newvalue) {
 		newvalue = self.checkValue(newvalue);
 		self.value = newvalue
 		self.input.value = newvalue;
 		self.lastValidValue = newvalue;
 	};
-	
+
 	this.setMin = function(newvalue) {
 		self.min = self.checkValue(newvalue);
 		self.set(self.value);
 	}
-	
+
 	this.setMax = function(newvalue) {
 		self.max = self.checkValue(newvalue);
 		self.set(self.value);
 	}
-	
+
 	this.toString = function() {
 		return this.get();
 	};
-	
+
 	this.set(this.defaultValue);
 }
