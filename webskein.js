@@ -56,22 +56,22 @@ function wscale_invert(w) {
 function dump(arr,level) {
 	var dumped_text = "";
 	if(!level) level = 0;
-	
+
 	var level_padding = "";
 	for(var j=0;j<level+1;j++) level_padding += "    ";
-	
-	if(typeof(arr) == 'object') {  
+
+	if(typeof(arr) == 'object') {
 		for(var item in arr) {
 			var value = arr[item];
-		
-			if(typeof(value) == 'object') { 
+
+			if(typeof(value) == 'object') {
 				dumped_text += level_padding + "'" + item + "' ...\n";
 				dumped_text += dump(value,level+1);
 			} else {
 				dumped_text += level_padding + "'" + item + "' => \"" + value + "\"\n";
 			}
 		}
-	} else { 
+	} else {
 		dumped_text = "===>"+arr+"<===("+typeof(arr)+")";
 	}
 	return dumped_text;
@@ -80,7 +80,7 @@ function dump(arr,level) {
 function canvasInit() {
 	canvas = $('stlview');
 	viewer = new JSC3D.Viewer(canvas);
-	
+
 	viewer.setParameter('SceneUrl', '');
 	viewer.setParameter('InitRotationX', 100);
 	viewer.setParameter('InitRotationY', 120);
@@ -89,7 +89,7 @@ function canvasInit() {
 	viewer.setParameter('BackgroundColor1', '#FFFFFF');
 	viewer.setParameter('BackgroundColor2', '#383840');
 	viewer.setParameter('RenderMode', 'flat');
-	
+
 	viewer.init();
 	viewer.update();
 }
@@ -104,31 +104,31 @@ function segmentIntersect(s1, s2) {
 
 	var l1 = segment2line(s1);
 	var l2 = segment2line(s2);
-	
+
 	var p = l1.intersectionWith(l2);
 
 	// no intersection
 	if (!p)
 		return null;
-	
+
 	if (s1[0].dimensions() == 2)
 		p = $V([p.e(1), p.e(2)]);
-		
+
 	var d1 = s1[0].distanceFrom(s1[1]);
 	var d2 = s2[0].distanceFrom(s2[1]);
-	
+
 	// check if intersection is on s1
 	if (p.distanceFrom(s1[0]) >= d1)
 		return null;
 	if (p.distanceFrom(s1[1]) >= d1)
 		return null;
-	
+
 	// check if intersection is on s2
 	if (p.distanceFrom(s2[0]) >= d2)
 		return null;
 	if (p.distanceFrom(s2[1]) >= d2)
 		return null;
-	
+
 	return p;
 }
 
@@ -138,16 +138,16 @@ function checkModel() {
 	try {
 		slice_btn.disabled = viewer.scene.children[0].vertexBuffer.length <= 12;
 		slice_layer_btn.disabled = slice_btn.disabled;
-		
+
 		if (viewer.afterupdate)
 			debugWrite(' Success\n');
-		
+
 		// update number of layers
 		calcLayers();
-		
+
 		// read list of triangles from jsc3d
 		jsc3d_to_sylvester();
-		
+
 		// update sliceview scaler parameters
 		if (1) {
 			modelWidth = (boundingBox[1].e(1) - boundingBox[0].e(1));
@@ -167,11 +167,11 @@ function checkModel() {
 				skeincanvas.drawleft = (skeincanvas.width / 2) - (modelWidth * (skeincanvas.height - 10) / modelHeight / 2);
 				skeincanvas.drawright = (skeincanvas.width / 2) + (modelWidth * (skeincanvas.height - 10) / modelHeight / 2);
 			}
-			
-			//debugWrite("mapping [" + boundingBox[0].e(1) + "," + boundingBox[0].e(2) + "]-[" + boundingBox[1].e(1) + "," + boundingBox[1].e(2) + 
+
+			//debugWrite("mapping [" + boundingBox[0].e(1) + "," + boundingBox[0].e(2) + "]-[" + boundingBox[1].e(1) + "," + boundingBox[1].e(2) +
 			//						"] onto [" + left + "," + right + "]-[" + top + "," + bottom + "]\n");
 		}
-		
+
 		viewer.afterupdate = undefined;
 	}
 	catch (err) {
@@ -191,7 +191,7 @@ function canvasLoadSTL(stl_uri) {
 // update layer-related input boxes
 function calcLayers() {
 	var count = 0;
-	
+
 	if (viewer.scene.children[0]) {
 		var mesh = viewer.scene.children[0];
 		count = Math.floor((mesh.aabb.maxZ - mesh.aabb.minZ - (layer_height.value / 2)) / layer_height.value);
@@ -202,8 +202,8 @@ function calcLayers() {
 
 	layer_count.set(count);
 	layer.setMax(count);
-	
-	// equivalent to skeinforge WoT	
+
+	// equivalent to skeinforge WoT
 	extrusionWidth = layer_height.value * wot.value;
 }
 
@@ -242,20 +242,20 @@ function jsc3d_to_sylvester() {
 			$V([x2, y2, z2]),										// point 3
 			$V([nbuf[j], nbuf[j+1], nbuf[j+2]]).toUnitVector()	// normal
 			]);
-			
+
 		j += 3;
 		do { } while (ibuf[i++] != -1);
 	}
-	
+
 	return triangles.length;
 }
 
 // slice the whole model, one layer at a time
 function sliceModel() {
 	calcLayers();
-	
+
 	layer.set(layer_count.value);
-	
+
 	sliceTimer = setTimeout(slice_nextLayer, 100);
 }
 
@@ -282,10 +282,10 @@ function slice_nextLayer() {
 // take a the list of triangles and the layer height and find the intersecting segments
 function sliceLayer() {
 	debugWrite('Slicing layer ' + layer.value + '...');
-	
+
 	// simplest solid model (tetrahedron) has 4 faces, so anything with less isn't a solid object
 	if (triangles.length >= 4) {
-		
+
 		// accept a fudge factor
 		var fudgeFactor = 0;
 		if (arguments[0]) {
@@ -295,16 +295,16 @@ function sliceLayer() {
 				throw "layer offset too high at Z=" + ((layer_height.value * layer.value) + (layer_height.value * 0.5) + boundingBox[0].e(3)) + " + fudge " + fudgeFactor + ", layer height " + layer_height.value;
 			}
 		}
-		
+
 		// translate layerNum into an actual Z-value
 		var planeHeight = (layer_height.value * layer.value) + (layer_height.value * 0.5) + boundingBox[0].e(3) + fudgeFactor;
-		
+
 		// create slice plane
 		var sliceplane = $P($V([0, 0, planeHeight]), $V([0, 0, 1]));
-		
+
 		// empty lines
 		lines = new Array();
-		
+
 		// find intersecting triangles
 		for (var t = 0; t < triangles.length; t++) { //>
 			triangle = triangles[t];
@@ -317,15 +317,15 @@ function sliceLayer() {
 					// check if line intersects the plane
 					var line = $L(p0, p1.subtract(p0));
 					var v = sliceplane.intersectionWith(line);
-					
+
 					if (v) {
 						// check if the intersecion actually lies between our two points, since sylvester's lines are infinitely long
 						// TODO: find a faster way to do this
 						var lineLength = p0.distanceFrom(p1);
-						
+
 						if ((v.distanceFrom(p0) <= lineLength) && (v.distanceFrom(p1) <= lineLength)) { //: >
 							// edge intersects, do something intelligent
-							
+
 							points.push(v);
 						}
 					}
@@ -333,7 +333,7 @@ function sliceLayer() {
 			}
 			if (points.length == 2) {
 				var normal = $V([triangle[3].e(1), triangle[3].e(2), 0]) // line normal (3d)
-				
+
 				var p0 = $V([points[0].e(1), points[0].e(2)]);
 				var p1 = $V([points[1].e(1), points[1].e(2)]);
 				var n = $V([normal.e(1), normal.e(2)]);
@@ -358,9 +358,9 @@ function sliceLayer() {
 				}
 			}
 		}
-		
+
 		debugWrite(' (' + lines.length + ' segments)');
-		
+
 		lines_to_paths(lines, fudgeFactor);
 
 		debugWrite(' OK\n');
@@ -374,7 +374,7 @@ function checkCombine(p0, p1, p2) {
 	// check for collinearity
 	var s1 = p1.subtract(p0);
 	var s2 = p2.subtract(p1);
-	
+
 	// check for very short runs
 	var d0 = p1.distanceFrom(p0);
 	var d1 = p2.distanceFrom(p1);
@@ -396,10 +396,10 @@ function checkCombine(p0, p1, p2) {
 		// previous segment and this one are combinable!
 		return null;
 	}
-	
+
 	return p1;
 }
-	
+
 // check path for possible combine optimisations
 function combineOptimisePath(path) {
 	var newpath = path;
@@ -410,7 +410,7 @@ function combineOptimisePath(path) {
 		for (var i = 0; i < path.length; i++) {
 			var p1 = path[i];
 			var p2 = path[(i + 1) % path.length];
-			
+
 			var p = checkCombine(p0,p1,p2);
 			if (!p) {
 				newpath.splice(i, 1);
@@ -420,11 +420,11 @@ function combineOptimisePath(path) {
 				p0 = p;
 		}
 	} while (delta > 0);
-	
+
 	if (path.length > newpath.length) {
 		debugWrite("CombineOptimise dropped " + (path.length - newpath.length) + " points\n");
 	}
-	
+
 	return newpath;
 }
 
@@ -434,12 +434,12 @@ function eliminatePathInverseLoops(paths) {
 	var newpaths = [];
 	while (i < paths.length) {
 		var path = paths[i];
-		
+
 		var lastIntersectorJ = -1;
 		var lastIntersectorK = -1;
 		var lastIntersectorP;
 		var outside = 0;
-		
+
 		var j = 0;
 		while (j < path.length) {
 			var p0 = path[(j + path.length - 1) % path.length];
@@ -448,20 +448,20 @@ function eliminatePathInverseLoops(paths) {
 				debugWrite("ASSERT p0 undefined!\n");
 			if (!p1)
 				debugWrite("ASSERT p1 undefined!\n");
-								
+
 			var k = j + 1;
 			while (k < path.length) {
 				var p2 = path[k % path.length];
 				var p3 = path[(k + 1) % path.length];
-				
+
 				var p = segmentIntersect([p0, p1], [p2, p3]);
-				
+
 				if (p0.eql(p3))
 					p = null;
-				
+
 				if (p) {
 					debugWrite("\nPath " + i + ": {" + (j - 1) + "-" + j + "}" + p0 + "-" + p1 + " intersects {" + k + "-" + (k + 1) + "}" + p2+ "-" + p3 + " at " + p + "!");
-					
+
 					// debug draw!
 					if (0) {
 						layers[layer.value].shells.push(paths);
@@ -474,11 +474,11 @@ function eliminatePathInverseLoops(paths) {
 						// break here!
 						p = p;
 					}
-					
+
 					if ((outside == 1) && (lastIntersectorK >= (j + 1))) {
 						// cull loop
 						debugWrite(" Closing path at {" + (lastIntersectorJ) + "} resuming at {" + (k + 1) + "} and creating new path from {" + j + "} to {" + lastIntersectorK + "} ");
-						
+
 						if (j == lastIntersectorJ) {
 							// swap p0 and p1, because if the whole loop intersects j then we see the end of the first loop first, instead of the start of the 2nd loop which is what we see first if j > lastJ
 							var px = p;
@@ -491,17 +491,17 @@ function eliminatePathInverseLoops(paths) {
 
 						path[lastIntersectorJ] = lastIntersectorP;
 						path.splice(lastIntersectorJ + 1, k - lastIntersectorJ);
-						
+
 						paths[i] = path;
 						if (newPath.length >= 3)
 							paths.push(newPath);
-						
+
 						outside = 0;
 						lastIntersectorJ = -1;
 						lastIntersectorK = -1;
 						lastIntersectorP = null;
 						//layers[layer.value].intersections = [];
-						
+
 						// force re-check of spliced junction
 						j--;
 						k = path.length;
@@ -536,7 +536,7 @@ function eliminatePathInverseLoops(paths) {
 		// mangle array, remove all points in the loop, rejoin flailing ends at our intersection
 		if (outside) {
 			debugWrite("tail-Culling " + (lastIntersectorK - lastIntersectorJ) + " points starting at " + (lastIntersectorJ + 1) + "\n");
-			
+
 			/*path[lastIntersectorJ] = lastIntersectorP;
 			path.splice(lastIntersectorJ + 1, lastIntersectorK - lastIntersectorJ);
 			if (path.length < 3) {
@@ -549,7 +549,7 @@ function eliminatePathInverseLoops(paths) {
 		}
 		i++;
 	}
-	
+
 	return paths;
 }
 
@@ -562,7 +562,7 @@ function lines_to_paths(lines, fudge) {
 	var path;		// path under construction
 	var fp;			// find point
 	var i = 0, j = 0, k = 0;
-	
+
 	for (k = 0; (k < 3) && (lines.length > 0); k++) {
 		if (k > 0) {
 			debugWrite(' (try ' + (k + 1) + ' finding paths)');
@@ -573,30 +573,30 @@ function lines_to_paths(lines, fudge) {
 		fp = cl[1];
 		var segcounter = 500;
 		var linefound;
-		
+
 		do {
 			linefound = 0;
 			i = 0;
 			while (i < lines.length) {
 				var tp = lines[i][0]; // test point
-				
+
 				if (tp.eql(fp)) {
 					// found the next segment
 					cl = lines.splice(i, 1)[0];
 					fp = cl[1];
 					linefound = 1;
-					
+
 					if (--segcounter == 0) {
 						debugWrite(" (" + lines.length + " segments remaining)");
 						segcounter = 500;
 					}
-					
+
 					// combinatorial optimisations
 					path.push(cl[0]);
-					
+
 					if (cl[1].eql(path[0])) {
 						// path is closed
-						
+
 						if (path.length > 3) {
 							// path = eliminatePathInverseLoops(path);
 							path = combineOptimisePath(path);
@@ -627,13 +627,13 @@ function lines_to_paths(lines, fudge) {
 			fp = cl[1];
 		}
 	}
-	
+
 	if (lines.length) {
 		fudge += layer_height.value * 0.01;
 		debugWrite(" " + lines.length + ' lines found without a closed path! Trying reslice with layer offset +' + fudge + '... ');
 		return sliceLayer(fudge);
 	}
-	
+
 	try {
 		if (dout) {
 			var r = "[";
@@ -654,9 +654,9 @@ function lines_to_paths(lines, fudge) {
 	}
 
 	// eliminatePathInverseLoops(paths);
-	
+
 	layers[layer.value] = { outline: paths, shells: [] };
-	
+
 	for (var i = 0; i < shell_count.value; i++) {
 		debugWrite(" (" + (i + 1) + " shells");
 		skeinShell(i);
@@ -669,7 +669,7 @@ function lines_to_paths(lines, fudge) {
 function skeinShell(n) {
 	var paths;
 	var shrinkLevel;
-	
+
 	if (n == 0) {
 		paths = layers[layer.value].outline;
 		shrinkLevel = extrusionWidth / 2;
@@ -678,12 +678,12 @@ function skeinShell(n) {
 		paths = layers[layer.value].shells[n - 1];
 		shrinkLevel = extrusionWidth;
 	}
-	
+
 	var shells = [];
 	for (var i = 0, l = paths.length; i < l; i++) {
 		shells[i] = shrinkPath(paths[i], extrusionWidth);
 	}
-	
+
 	shells = eliminatePathInverseLoops(shells);
 	for (var i = 0, l = shells.length; i < l; i++) {
 		shells[i] = combineOptimisePath(shells[i]);
@@ -718,19 +718,19 @@ function shrinkPath(path, distance) {
 
 	p0 = p0.add(n1);
 	p1 = p1.add(n1);
-	
+
 	for (var i = 0, j = 0, l = path.length; j < l; i++, j++) {
 		var p2 = path[j % l];
 		var p3 = path[(j + 1) % l];
 		var s2 = p3.subtract(p2);
 		var n2 = s2.to3D().cross($V([0, 0, -1])).toUnitVector();
 				n2 = $V([n2.e(1),n2.e(2)]).multiply(-distance);
-		
+
 		p2 = p2.add(n2);
 		p3 = p3.add(n2);
-		
+
 		var p, ns1, ns2;
-		
+
 		var a = Math.atan2(s2.e(2), s2.e(1)) - Math.atan2(-s1.e(2), -s1.e(1));
 		if (a < 0)
 			a += Math.PI * 2;
@@ -746,9 +746,9 @@ function shrinkPath(path, distance) {
 			ns1 = Segment.create(p0, p1);
 			ns2 = Segment.create(p2, p3);
 		}
-		
+
 		p = ns1.intersectionWith(ns2);
-		
+
 		if (p) {
 			// if (a < (Math.PI / 2))
 				// debugWrite("intersect at " + p + "\n");
@@ -775,16 +775,16 @@ function shrinkPath(path, distance) {
 				// debugWrite(x1 + " backwards\n");
 				// p2 = p0;
 				// p3 = p1;
-				
+
 				j-=2;
 				backing = 1;
-				
+
 				p0 = newpath[newpath.length - 1];
 				p1 = newpath[newpath.length - 2];
 				s1 = p1.subtract(p0);
 				n1 = s1.to3D().cross($V([0, 0, -1])).toUnitVector();
 				n1 = $V([n1.e(1),n1.e(2)]).multiply(-distance);
-				
+
 				p0 = p0.add(n1);
 				p1 = p1.add(n1);
 			}
@@ -793,13 +793,13 @@ function shrinkPath(path, distance) {
 			}
 		}
 	}
-	
+
 	return combineOptimisePath(newpath);
 }
 
 function drawLayer(n) {
 	var context = skeincanvas.getContext('2d');
-	
+
 	//context.restore();
 	context.clearRect(-100, -100, skeincanvas.width + 100, skeincanvas.height + 100);
 	//context.save();
@@ -811,7 +811,7 @@ function drawLayer(n) {
 	var paths = layers[n].outline;
 	var shells = layers[n].shells;
 	var intersections = layers[n].intersections;
-	
+
 	var colours = [
 			[128,128,128],
 			[255,0,0],
@@ -855,7 +855,7 @@ function drawLayer(n) {
 			context.restore();
 		}
 	}
-	
+
 	// draw reset button
 	context.save();
 		context.lineWidth = 2;
@@ -875,7 +875,7 @@ function drawPath(path, colour, width) {
 		return;
 
 	var context = skeincanvas.getContext('2d');
-	
+
 	if (!width)
 		width = 0.75;
 
@@ -885,8 +885,8 @@ function drawPath(path, colour, width) {
 		context.lineCap = 'round';
 		context.lineJoin = 'round';
 		context.beginPath();
-	
-		path.push(path[0]);	
+
+		path.push(path[0]);
 		for (var i = 0; i < path.length; i++) {
 			var point = path[i];
 			var x = xscale(point.e(1));
@@ -894,7 +894,7 @@ function drawPath(path, colour, width) {
 			context.lineTo(x, y);
 		}
 		path.pop();
-	
+
 		context.stroke();
 	context.restore();
 
@@ -904,8 +904,8 @@ function drawPath(path, colour, width) {
 		context.strokeStyle = 'rgba(' + colour.join(',') + ',0.25)';
 		context.lineWidth = 1;
 		context.beginPath();
-		
-		path.push(path[0]);	
+
+		path.push(path[0]);
 		for (var i = 1; i < path.length; i++) {
 			var vl = 0.5; // normal tick length, millimeters
 			var p0 = path[i - 1];
@@ -915,12 +915,12 @@ function drawPath(path, colour, width) {
 			var y = (p0.e(2) + p1.e(2)) / 2;
 			context.moveTo(xscale(x), yscale(y));
 			context.lineTo(xscale(x + n.e(1)), yscale(y + n.e(2)));
-		}	
+		}
 		path.pop();
-		
+
 		context.stroke();
 	context.restore();
-	
+
 	if (1) {
 		var sl = 4;																										// start vector length
 		var al = 2;																										// arrow length
@@ -935,7 +935,7 @@ function drawPath(path, colour, width) {
 		var y1 = p0.e(2);
 		var x2 = p0.e(1) + v.e(1);																		// start point + start vector
 		var y2 = p0.e(2) + v.e(2);
-		
+
 		// now draw path entry point and direction vector
 		context.save();
 			context.strokeStyle = 'rgba(' + colour.join(',') + ',0.5)';
@@ -946,7 +946,7 @@ function drawPath(path, colour, width) {
 			context.lineTo(xscale(x2), yscale(y2));
 			context.stroke();
 		context.restore();
-		
+
 		context.save();
 			// now draw direction vector arrows
 			context.strokeStyle = 'rgba(' + colour.join(',') + ',0.5)';
@@ -965,20 +965,20 @@ function pointInfo(x, y) {
 	if (layers[layer.value]) {
 		var lx = xscale_invert(x);
 		var ly = yscale_invert(y);
-		
+
 		var p = $V([lx, ly]);
-		
+
 		var cl = $V([0, 0]);
 		var d = 2147483647;
 		var gr;
 		var path_ind;
 		var point_ind;
 		var shell_ind;
-		
+
 		var outlines = layers[layer.value].outline;
 		var shells = layers[layer.value].shells;
 		var path;
-		
+
 		for (i = 0; i < outlines.length; i++) {
 			var cpath = outlines[i];
 			for (var j = 0; j < cpath.length; j++) {
@@ -1015,51 +1015,51 @@ function pointInfo(x, y) {
 				}
 			}
 		}
-		
+
 		if (!path)
 			return;
-		
+
 		drawLayer(layer.value);
-		
+
 		// var path = layers[layer.value][gr][path_ind];
-		
+
 		var description = cl + "\n"
-		
+
 		description += "Group: " + gr + "\n";
 		if (gr == 'shells')
 			description += "Shell " + shell_ind + "\n";
 		description += "Set: " + path_ind + "\n";
 		description += "Index: " + point_ind + "\n";
-		
+
 		var p0i = (point_ind + path.length - 1) % path.length;
 		var p2i = (point_ind + 1) % path.length;
 
 		var p0 = path[p0i];
 		var p1 = cl;
 		var p2 = path[p2i];
-		
+
 		var s1 = p1.subtract(p0);
 		var s2 = p2.subtract(p1);
-		
+
 		description += "Next (blue): [" + p2i + "] = " + p2 + " (" + s2.modulus() + ")\n";
 		description += "Previous (orange): [" + p0i + "] = " + p0 + " (" + s1.modulus() + ")\n";
-		
+
 		var a = Math.atan2(s2.e(2), s2.e(1)) - Math.atan2(-s1.e(2), -s1.e(1));
 		if (a < 0)
 			a += Math.PI * 2;
-		
+
 		description += "Angle: " + (a * 180 / Math.PI).toFixed(2) + " degrees (" + s1.angleFrom(s2) + ")\n";
-		
+
 		description += "distance(p0,p2) = " + p2.distanceFrom(p0) + "\n";
-		
+
 		description += "Combinable: ";
 		if (checkCombine(p0, p1, p2))
 			description += "no\n";
 		else
-			description += "yes\n";			
+			description += "yes\n";
 
 		var context = skeincanvas.getContext('2d');
-		
+
 		context.save();
 			context.strokeStyle = "rgba(0, 255, 0, 1)";
 			context.fillStyle = "rgba(0, 255, 0, 0.5)";
@@ -1076,7 +1076,7 @@ function pointInfo(x, y) {
 			context.lineTo(xscale(p2.e(1)), yscale(p2.e(2)));
 			context.stroke();
 		context.restore();
-		
+
 		context.save();
 			context.strokeStyle = "rgba(255, 128, 0, 0.5)";
 			context.lineWidth = 4;
@@ -1085,7 +1085,7 @@ function pointInfo(x, y) {
 			context.lineTo(xscale(p0.e(1)), yscale(p0.e(2)));
 			context.stroke();
 		context.restore();
-	
+
 		var pointinfo = $('pointinfo');
 		pointinfo.value = description;
 	}

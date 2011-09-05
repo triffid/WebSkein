@@ -104,40 +104,40 @@
 				skeincanvas.translationY = 0;
 				skeincanvas.scale = 0;
 				skeincanvas.scaleF = 1;
-			
+
 			var debug = $('debug');
-			
+
 			var dout = $('dout');
-			
+
 			var getopt = [];
 			var getopt_hash = [];
-			
+
 			var reader = new FileReader();
 			var stloader;
 
 			var layer = new boundValue('layer_txt', 0, 0, undefined, true);
 			var layer_height = new boundValue('layer_height_txt', 0.3, 0.05);
 			var layer_count = new boundValue('layer_count_txt', 0, 0, undefined, true);
-			
+
 			var collinear_distance = new boundValue('collinear_distance_txt', 0.065, 0);
 			var collinear_angle = new boundValue('collinear_angle_txt', 0.1, 0);
 			var combine_length = new boundValue('combine_length_txt', 0.5, 0);
 			var min_length = new boundValue('min_length_txt', 0.4, 0);
 			var wot = new boundValue('wot_txt', 1.6, 0.2);
 			var shell_count = new boundValue('shell_count_txt', 1, 1, undefined, true);
-			
+
 			Object.extend(Event, {
 				wheel:function (event){
 					var delta = 0;
 					if (!event) event = window.event;
 					if (event.wheelDelta) {
-						delta = event.wheelDelta/120; 
+						delta = event.wheelDelta/120;
 						if (window.opera) delta = -delta;
 					} else if (event.detail) { delta = -event.detail/3;	}
 					return Math.round(delta); //Safari Round
 				}
 			});
-			
+
 			function gotstl(e) {
 				try {
 					var stloader = e.element().stloader;
@@ -154,18 +154,18 @@
 					alert(err);
 				}
 			}
-			
+
 			reader.onload = gotstl;
-			
+
 			document.observe("dom:loaded", function() {
 				stloader = new JSC3D.StlLoader();
 				reader.stloader = stloader;
-				
+
 				slice_btn.disabled = true;
 				slice_layer_btn.disabled = true;
-				
+
 				stl_uri.clear();
-				
+
 				stl_uri.observe("change", function(e) {
 					var f = e.element().files[0];
 					if (f) {
@@ -174,7 +174,7 @@
 						reader.readAsBinaryString(f);
 					}
 				});
-				
+
 				slice_btn.reset = function() {
 					this.disabled = false;
 					this.value = "Skein Model";
@@ -194,7 +194,7 @@
 					window.clearTimeout(sliceTimer);
 					slice_btn.reset();
 				};
-				
+
 				slice_layer_btn.onclick = function() {
 					calcLayers();
 					updateHash();
@@ -216,12 +216,12 @@
 						dout.value = r;
 					}
 				}
-				
+
 				draw_layer_btn.onclick = function() {
 					calcLayers();
 					drawLayer(layer.value);
 				}
-				
+
 				skeincanvas.observe("mousedown", function(e) {
 					if (e.isLeftClick()) {
 						e.elementX = e.pointerX() - e.element().offsetLeft;
@@ -287,7 +287,7 @@
 				skeincanvas.observe("mousewheel", skeincanvas.mousewheelhandler);
 				skeincanvas.observe("DOMMouseScroll", skeincanvas.mousewheelhandler);
 			});
-			
+
 			function updateHash() {
 				window.location.hash =
 					"lh=" + layer_height.value +
@@ -299,12 +299,12 @@
 					",ns=" + shell_count.value +
 					"";
 			}
-			
+
 			function debugWrite(data) {
 				debug.value += data;
 				debug.scrollTop = debug.scrollHeight;
 			}
-			
+
 			window.onload = function() {
 				debug.value = '';
 				if (window.location.search.length > 1) {
@@ -314,43 +314,43 @@
 						getopt[unescape(iCouple[0]).toLowerCase()] = iCouple.length > 1 ? unescape(iCouple[1]) : null;
 					}
 				}
-				
+
 				if (window.location.hash.length > 1) {
 					var lh = window.location.hash.match(/lh=(-?[\d\.]+)/i);
 					if (lh) {
 						layer_height.set(lh[1]);
 					}
-					
+
 					var scd = window.location.hash.match(/scd=(-?[\d\.]+)/i);
 					if (scd)
 						collinear_distance.set(scd[1]);
-						
+
 					var sca = window.location.hash.match(/sca=(-?[\d\.]+)/i);
 					if (sca)
 						collinear_angle.set(sca[1]);
-						
+
 					var scl = window.location.hash.match(/scl=(-?[\d\.]+)/i);
 					if (scl)
 						combine_length.set(scl[1]);
-						
+
 					var msl = window.location.hash.match(/msl=(-?[\d\.]+)/i);
 					if (msl)
 						min_length.set(msl[1]);
-						
+
 					var wotr = window.location.hash.match(/wot=(-?[\d\.]+)/i);
 					if (wotr)
 						wot.set(wotr[1]);
-						
+
 					var ns = window.location.hash.match(/ns=(-?[\d\.]+)/i);
 					if (ns)
 						shell_count.set(ns[1]);
 				}
-				
+
 				//if (getopt['stl']) {
 				//	stl_uri.value = getopt['stl'];
 				//}
-				
-				canvasInit();				
+
+				canvasInit();
 				// canvasLoadSTL(stl_uri.value);
 			}
 		</script>

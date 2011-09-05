@@ -16,7 +16,7 @@ skelVertex.prototype = {
 		this.nextV = sv;
 		sv.prevV = this;
 		this.nextSeg = new Segment(this.vector, sv.vector);
-		if (!this.nextSeg)
+		if (this.nextSeg == null || !this.nextSeg.v1)
 			throw "segment creation failed!"
 		this.nextSeg.nextV = sv;
 		this.nextSeg.prevV = this;
@@ -30,7 +30,7 @@ skelVertex.prototype = {
 		this.prevV = sv;
 		sv.nextV = this;
 		this.prevSeg = new Segment(sv.vector, this.vector);
-		if (!this.prevSeg)
+		if (this.prevSeg == null || !this.prevSeg.v1)
 			throw "segment creation failed!"
 		this.prevSeg.nextV = this;
 		this.prevSeg.prevV = sv;
