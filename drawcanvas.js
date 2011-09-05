@@ -145,23 +145,28 @@ function drawcanvas() {
 		}
 	}
 	
-	// draw the skeleton in orange (edge events) and green (reflex events)
-	if (skelSegments.length) {
-		context.save();
-		context.strokeStyle = "rgba(255, 192, 0, 0.5)";
-		context.lineWidth = 1;
-		for (var i = 0, l = skelSegments.length; i < l; i++) {
-			var skelSegment = skelSegments[i][0];
-			if (skelSegments[i][1])
-				context.strokeStyle = "rgba(0, 255, 0, 0.5)";
-			else
-				context.strokeStyle = "rgba(255, 192, 0, 0.5)";
-			context.beginPath();
-			context.moveTo(xscale(skelSegment.v1.e(1)), yscale(skelSegment.v1.e(2)));
-			context.lineTo(xscale(skelSegment.v2.e(1)), yscale(skelSegment.v2.e(2)));
-			context.stroke();
+	try {
+		// draw the skeleton in orange (edge events) and green (reflex events)
+		if (skelSegments.length) {
+			context.save();
+			context.strokeStyle = "rgba(255, 192, 0, 0.5)";
+			context.lineWidth = 1;
+			for (var i = 0, l = skelSegments.length; i < l; i++) {
+				var skelSegment = skelSegments[i][0];
+				if (skelSegments[i][1])
+					context.strokeStyle = "rgba(0, 255, 0, 0.5)";
+				else
+					context.strokeStyle = "rgba(255, 192, 0, 0.5)";
+				context.beginPath();
+				context.moveTo(xscale(skelSegment.v1.e(1)), yscale(skelSegment.v1.e(2)));
+				context.lineTo(xscale(skelSegment.v2.e(1)), yscale(skelSegment.v2.e(2)));
+				context.stroke();
+			}
+			context.restore();
 		}
-		context.restore();
+	}
+	catch (e) {
+		$('pointInfoTxt').value += e;
 	}
 
 	// draw outline in black
