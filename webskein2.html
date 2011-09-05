@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>WebSkein</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<script type="text/javascript" src="sylvester/sylvester.src.js"></script>
+		<script type="text/javascript" src="jsc3d.js"></script>
+		<script type="text/javascript" src="prototype.js"></script>
+		<script type="text/javascript" src="boundvalue.js"></script>
+		<script type="text/javascript" src="sylvester/sylvester_ext.js"></script>
+		<script type="text/javascript" src="webskein2.js"></script>
+		<style type="text/css">
+			input, textarea {
+				margin: 0 0.1em;
+				padding: 0 0.1em;
+				border: 1px solid #CCF;
+				color: black;
+				background-color: white;
+			}
+			input[type=text] {
+				width: 2.5em;
+			}
+			input[type=button] {
+				border: 1px outset #CCF;
+			}
+			input[disabled] {
+				color: #CCC;
+			}
+			input[type=text].long {
+				width: 80%;
+			}
+			.settings h3 {
+				color: #88C;
+				border-bottom: 1px solid #CCF;
+				font-weight: bold;
+				font-size: 100%;
+				margin: 0;
+			}
+			.setting {
+				white-space: nowrap;
+				width: 100%;
+				clear: both;
+				border-bottom: 1px solid #F0F0FF;
+				height: 1.3em;
+				padding-left: 1em;
+			}
+			.setting .label {
+				float: left;
+			}
+			.setting .field {
+				float: right;
+				width: 5em;
+			}
+			.setting .field input {
+				width: 2.5em;
+			}
+			input.right {
+				clear: both;
+				float: right;
+				text-align: center;
+				width: 5em;
+			}
+		</style>
+	</head>
+	<body>
+		<div style="width: 455px; padding: 0; margin: 0; float: left;">
+			<form id="skeinform" action="" method="get">
+				<input id="stl_uri" class="long" type="file" size="35" value="x-end-motor_M6.stl" />
+			</form>
+			<canvas id="stlview" style="border: 1px inset;" width="450" height="337"></canvas>
+		</div>
+		<form id="settingsform" action="">
+			<div style="width: 455px; padding: 0; margin: 0; float: left;">
+				<input id="slice_btn" type="button" value="Skein Model" style="width: 7em;" /><input id="stop_btn" type="button" value="Stop" style="color: red; margin-right: 0.5em;" />
+				<span style="white-space: nowrap;">Layer <input id="layer_txt" type="text" size="4" value="0" /> of <input id="layer_count_txt" type="text" size="4" value="" readonly="readonly" /></span>
+				<input id="slice_layer_btn" type="button" value="Slice" />
+				<input id="draw_layer_btn" type="button" value="Draw" />
+				<canvas id="sliceview" style="border: 1px inset;" width="450" height="337"></canvas>
+			</div>
+			<div class="settings" style="width: 300px; padding: 0; margin: 0; float: left;">
+				<div class="setting"><span class="label">Layer Height</span><span class="field"><input id="layer_height_txt" type="text" value="0.3" />mm</span></div>
+				<h3>Segment Combining Options</h3>
+<!-- 				<div class="setting"><span class="label">Segment Co-linear Distance</span><span class="field"><input id="collinear_distance_txt" type="text" value="0.15" />mm</span></div> -->
+				<div class="setting"><span class="label">Segment Co-linear Angle</span><span class="field"><input id="collinear_angle_txt" type="text" value="0.15" />r&theta;</span></div>
+<!-- 				<div class="setting"><span class="label">Segment Combine Length</span><span class="field"><input id="combine_length_txt" type="text" value="0.5" />mm</span></div> -->
+				<div class="setting"><span class="label">Mininum Segment Length</span><span class="field"><input id="min_length_txt" type="text" value="0.4" />mm</span></div>
+				<h3>Toolpath Options</h3>
+				<div class="setting"><span class="label">Width over Thickness</span><span class="field"><input id="wot_txt" type="text" value="1.6" />:1</span></div>
+				<div class="setting"><span class="label">Shell Count</span><span class="field"><input id="shell_count_txt" type="text" value="1.6" />#</span></div>
+				<hr>
+				<textarea id="pointinfo" rows="12" cols="30" style="width: 100%;">blah</textarea>
+			</div>
+			<textarea id="debug" rows="10" cols="81" style="width: 100%;"></textarea>
+			<textarea id="dout" rows="10" cols="81" style="width: 100%;"></textarea>
+		</form>
+		<script type="text/javascript">
+			var slice_btn = $('slice_btn');
+			var stl_uri = $('stl_uri');
+			var stop_btn = $('stop_btn');
+			var slice_layer_btn = $('slice_layer_btn');
+			var draw_layer_btn = $('draw_layer_btn');
+			var skeincanvas = $('sliceview');
+				skeincanvas.translationX = 0;
+				skeincanvas.translationY = 0;
+				skeincanvas.scale = 0;
+				skeincanvas.scaleF = 1;
+
+			var debug = $('debug');
+
+			var dout = $('dout');
+
+			var getopt = [];
+			var getopt_hash = [];
+
+			var reader = new FileReader();
+			var stloader;
+
+			var layer = new boundValue('layer_txt', 0, 0, undefined, true);
+			var layer_height = new boundValue('layer_height_txt', 0.3, 0.05);
+			var layer_count = new boundValue('layer_count_txt', 0, 0, undefined, true);
+
+// 			var collinear_distance = new boundValue('collinear_distance_txt', 0.065, 0);
+			var collinear_angle = new boundValue('collinear_angle_txt', 0.1, 0);
+// 			var combine_length = new boundValue('combine_length_txt', 0.5, 0);
+			var min_length = new boundValue('min_length_txt', 0.4, 0);
+			var wot = new boundValue('wot_txt', 1.6, 0.2);
+			var shell_count = new boundValue('shell_count_txt', 1, 1, undefined, true);
+
+			Object.extend(Event, {
+				wheel:function (event){
+					var delta = 0;
+					if (!event) event = window.event;
+					if (event.wheelDelta) {
+						delta = event.wheelDelta/120;
+						if (window.opera) delta = -delta;
+					} else if (event.detail) { delta = -event.detail/3;	}
+					return Math.round(delta); //Safari Round
+				}
+			});
+
+			function gotstl(e) {
+				try {
+					var stloader = e.element().stloader;
+					//debugWrite(dump(e.element()));
+					var scene = new JSC3D.Scene();
+					debugWrite(" OK. Parsing...");
+					stloader.parseStl(scene, e.element().result);
+					viewer.afterupdate = checkModel;
+					viewer.replaceScene(scene);
+					viewer.update();
+				}
+				catch (err) {
+					// debugWrite(dump(e) + '\n');
+					alert(err);
+				}
+			}
+
+			reader.onload = gotstl;
+
+			document.observe("dom:loaded", function() {
+				stloader = new JSC3D.StlLoader();
+				reader.stloader = stloader;
+
+				slice_btn.disabled = true;
+				slice_layer_btn.disabled = true;
+
+				stl_uri.clear();
+
+				stl_uri.observe("change", function(e) {
+					var f = e.element().files[0];
+					if (f) {
+						debugWrite("Loading " + f.name + "...");
+						var sMimeType = f.type;
+						reader.readAsBinaryString(f);
+					}
+				});
+
+				slice_btn.reset = function() {
+					this.disabled = false;
+					this.value = "Skein Model";
+				}
+				slice_btn.onclick = function() {
+					try {
+						this.disabled = true;
+						this.value = "Skein";
+						sliceModel();
+					}
+					catch (err) {
+						this.reset()
+					}
+					return false;
+				};
+				stop_btn.onclick = function() {
+					window.clearTimeout(sliceTimer);
+					slice_btn.reset();
+				};
+
+				slice_layer_btn.onclick = function() {
+					calcLayers();
+					updateHash();
+					sliceLayer();
+					drawLayer(layer.value);
+					if (dout) {
+						var r = "[";
+						var paths = layers[layer.value].outline;
+						for (var i = 0, l = paths.length; i < l; i++) { //>
+							r += "[ ";
+							var path = paths[i];
+							for (var j = 0, m = path.length; j < m; j++) { //>
+								var point = path[j];
+								r += point.toString() + ",";
+							}
+							r = r.substr(r, r.length - 1) + "],";
+						}
+						r = r.substr(r, r.length - 1) + "]";
+						dout.value = r;
+					}
+				}
+
+				draw_layer_btn.onclick = function() {
+					calcLayers();
+					drawLayer(layer.value);
+				}
+
+				skeincanvas.observe("mousedown", function(e) {
+					if (e.isLeftClick()) {
+						e.elementX = e.pointerX() - e.element().offsetLeft;
+						e.elementY = e.pointerY() - e.element().offsetTop;
+						this.mousedownX = e.elementX;
+						this.mousedownY = e.elementY;
+						this.translation_startX = e.elementX;
+						this.translation_startY = e.elementY;
+						this.mousedown = 1;
+					}
+				});
+				skeincanvas.observe("mouseup", function(e) {
+					e.elementX = e.pointerX() - e.element().offsetLeft;
+					e.elementY = e.pointerY() - e.element().offsetTop;
+					if (this.mousedown) {
+						this.mousedown = 0;
+						if ((e.elementX == this.mousedownX) && (e.elementY == this.mousedownY)) {
+							if ((e.elementX < 20) && (e.elementY < 20)) { //>
+								skeincanvas.translationX = 0;
+								skeincanvas.translationY = 0;
+								skeincanvas.scale = 0;
+								skeincanvas.scaleF = 1;
+								if (layers[layer.value])
+									drawLayer(layer.value);
+							}
+						}
+					}
+				});
+				skeincanvas.observe("mousemove", function(e) {
+					e.elementX = e.pointerX() - e.element().offsetLeft;
+					e.elementY = e.pointerY() - e.element().offsetTop;
+					var dX = e.elementX - this.mousemoveX;
+					var dY = e.elementY - this.mousemoveY;
+					this.mousemoveX = e.elementX;
+					this.mousemoveY = e.elementY;
+					if (this.mousedown) {
+						skeincanvas.translationX += dX;
+						skeincanvas.translationY += dY;
+						if (layers.length) {
+							// panning, draw
+							drawLayer(layer.value);
+						}
+					}
+					else if (layers.length) {
+						if (this.pointInfoTimer)
+							window.clearTimeout(this.pointInfoTimer);
+						this.pointInfoTimer = window.setTimeout(function () { pointInfo(e.elementX, e.elementY); }, 100);
+					}
+				});
+				skeincanvas.mousewheelhandler = function(e) {
+					if (layers[layer.value]) {
+						e.stop();
+						var x_start = xscale_invert(this.mousemoveX);
+						var y_start = yscale_invert(this.mousemoveY);
+						skeincanvas.scale += Event.wheel(e);
+						skeincanvas.scaleF = Math.pow(Math.E, skeincanvas.scale / 10);
+						// translate, so we scale as if mousecursor is origin for nice zoom effect
+						skeincanvas.translationX += this.mousemoveX - xscale(x_start);
+						skeincanvas.translationY += this.mousemoveY - yscale(y_start);
+						drawLayer(layer.value);
+					}
+				}
+				skeincanvas.observe("mousewheel", skeincanvas.mousewheelhandler);
+				skeincanvas.observe("DOMMouseScroll", skeincanvas.mousewheelhandler);
+			});
+
+			function updateHash() {
+				window.location.hash =
+					"lh=" + layer_height.value +
+// 					",scd=" + collinear_distance.value +
+					",sca=" + collinear_angle.value +
+// 					",scl=" + combine_length.value +
+					",msl=" + min_length.value +
+					",wot=" + wot.value +
+					",ns=" + shell_count.value +
+					"";
+			}
+
+			function debugWrite(data) {
+				debug.value += data;
+				debug.scrollTop = debug.scrollHeight;
+			}
+
+			window.onload = function() {
+				debug.value = '';
+				if (window.location.search.length > 1) {
+					var iCouple, aCouples = window.location.search.substr(1).split("&");
+					for (var iCouplId = 0; iCouplId < aCouples.length; iCouplId++) { //>
+						iCouple = aCouples[iCouplId].split("=");
+						getopt[unescape(iCouple[0]).toLowerCase()] = iCouple.length > 1 ? unescape(iCouple[1]) : null;
+					}
+				}
+
+				if (window.location.hash.length > 1) {
+					var lh = window.location.hash.match(/lh=(-?[\d\.]+)/i);
+					if (lh) {
+						layer_height.set(lh[1]);
+					}
+
+// 					var scd = window.location.hash.match(/scd=(-?[\d\.]+)/i);
+// 					if (scd)
+// 						collinear_distance.set(scd[1]);
+
+					var sca = window.location.hash.match(/sca=(-?[\d\.]+)/i);
+					if (sca)
+						collinear_angle.set(sca[1]);
+
+// 					var scl = window.location.hash.match(/scl=(-?[\d\.]+)/i);
+// 					if (scl)
+// 						combine_length.set(scl[1]);
+
+					var msl = window.location.hash.match(/msl=(-?[\d\.]+)/i);
+					if (msl)
+						min_length.set(msl[1]);
+
+					var wotr = window.location.hash.match(/wot=(-?[\d\.]+)/i);
+					if (wotr)
+						wot.set(wotr[1]);
+
+					var ns = window.location.hash.match(/ns=(-?[\d\.]+)/i);
+					if (ns)
+						shell_count.set(ns[1]);
+				}
+
+				//if (getopt['stl']) {
+				//	stl_uri.value = getopt['stl'];
+				//}
+
+				canvasInit();
+				// canvasLoadSTL(stl_uri.value);
+			}
+		</script>
+	</body>
+</html>
