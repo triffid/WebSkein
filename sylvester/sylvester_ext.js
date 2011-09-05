@@ -42,30 +42,25 @@ Segment.prototype = {
 	dup: function() {
 		return Segment.create(this.v1, this.v2);
 	},
-	
+
 	// returns true iff argument is a point in this segment
 	contains: function(o) {
 		if (!this.line.contains(o))
 			return null;
 
-		// utility function- check if b is between a and c (inclusive)
-		function between_inc(a, b, c) {
-			if (a >= c) { return (a >= b) && (b >= c); }
-			else				{ return (a <= b) && (b <= c); }
-		};
-		
-		// point is on our line, now check if it's within our segment
-		if (between_inc(this.v1.elements[0], o.elements[0], this.v2.elements[0]) && 
-				between_inc(this.v1.elements[1], o.elements[1], this.v2.elements[1]) && 
-				between_inc(this.v1.elements[2], o.elements[2], this.v2.elements[2]))
+		if (this.positionAlong(o) >= 0 && this.positionAlong(o) <= 1)
 			return true;
 		return null;
 	},
-	
+
 	isParallelTo: function(o) {
 		return this.line.isParallelTo(o);
 	},
-	
+
+	positionAlong: function(o) {
+		return this.v2.subtract(this.v1).positionAlong(o.subtract(this.v1));
+	},
+
 	// find intersection with another plane, line, segment, vector
 	intersectionWith: function(o) {
 		if (this.isParallelTo(o))
@@ -73,7 +68,7 @@ Segment.prototype = {
 		if (o.anchor) {
 			if (o.v1) {
 				// segment
-				if (this.line.contains(o.line)) {
+				if (this.line.isParallelTo(o.line)) {
 					// we're co-linear, find two intersecting points, make a new segment
 					var l = [this.v1, this.v2, o.v1, o.v2];
 					var r = [];
@@ -101,7 +96,7 @@ Segment.prototype = {
 				if (this.line.intersects(o.line)) {
 					// lines cross, check that resulting point is within both segments
 					var p = this.line.intersectionWith(o.line);
-					if (this.contains(p) && o.contains(p))
+					if ((p) && (p.elements) && (this.contains(p) && o.contains(p)))
 						return p;
 				}
 			}
@@ -131,11 +126,11 @@ Segment.prototype = {
 		}
 		return null;
 	},
-	
+
 	translate: function(v) {
 		return new Segment(this.v1.add(v), this.v2.add(v));
 	},
-	
+
 	// set segment's anchor and endpoint, calculate direction etc
 	setVectors: function(v1, v2) {
 		v1 = Vector.create(v1);
@@ -145,7 +140,7 @@ Segment.prototype = {
 		var v3 = v2.subtract(v1);
 		var mod = v3.modulus();
 		if (mod == 0) { return null; }
-		
+
 		this.endpoint = v2;
 		this.v1 = v1;
 		this.v2 = v2;
@@ -188,15 +183,30 @@ Triangle.prototype = {
 				// first find if the line intersects our plane
 				var p = this.plane.intersectionWith(o);
 				if (!p) return null;
-				// now work out if that point is inside our triangle. if it is, the cross product between it and each side will be parallel to our normal
-				for (var i = 0; i < 3; i++) {
-					// var c = p.subtract(this.v[i]).cross(this.s[i].direction);
-					var c = this.s[i].direction.cross(p.subtract(this.v[i]));
-					if (c.isAntiparallelTo(this.normal))
-						return null;
+				if (0) {
+					// now work out if that point is inside our triangle. if it is, the cross product between it and each side will be parallel to our normal
+					for (var i = 0; i < 3; i++) {
+						// var c = p.subtract(this.v[i]).cross(this.s[i].direction);
+						var c = this.s[i].direction.cross(p.subtract(this.v[i]));
+						if (c.isAntiparallelTo(this.normal))
+							return null;
+					}
 				}
-				// looks like it does intersect after all
-				return p;
+				// use algorithm explained at http://www.blackpawn.com/texts/pointinpoly/default.html
+				var x0 = this.v3.subtract(this.v1);
+				var x1 = this.v2.subtract(this.v1);
+				var x2 = p.subtract(this.v1);
+				var dot00 = x0.dot(x0);
+				var dot01 = x0.dot(x1);
+				var dot02 = x0.dot(x2);
+				var dot11 = x1.dot(x1);
+				var dot12 = x1.dot(x2);
+				var invDenom = 1 / (dot00 * dot11 - dot01 * dot01);
+				var u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+				var v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+				if ((u > 0) && (v > 0) && ((u + v) < 1))
+					// looks like it does intersect after all
+					return p;
 			}
 			else if (o.normal) {
 				// plane
@@ -273,7 +283,7 @@ Triangle.prototype = {
 				!s2.direction.cross(s3.direction).toUnitVector().eql(n) ||
 				!s3.direction.cross(s1.direction).toUnitVector().eql(n))
 			throw "bad normal!"
-		
+
 		this.v1 = v1;
 		this.v2 = v2;
 		this.v3 = v3;
