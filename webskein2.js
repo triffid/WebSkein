@@ -746,7 +746,7 @@ function drawShell(offset) {
 					var cp = sp.motorcyclesthathitme[k][1][2].dup();
 					cp.bisector = mcycle.velocity.multiply(-1);
 					cp.starttime = 0;
-					cp.motorcycle = mcycle;
+					cp.motorcycle = undefined;
 					cp.motorcyclesthathitme = [];
 					cp.insertAfter = [];
 					shellpaths[i].push(cp);
@@ -784,8 +784,13 @@ function drawShell(offset) {
 						var cp = tce[1];
 						var mi = tce[2];
 						var mj = tce[3];
-						if (time < mi.crashtime / 2) {
-							binaryInsertionSort(eventqueue, time, ['start', i, j, cp, mi]);
+						var mytime = mj.velocity.positionAlong(cp.subtract(mj));
+						if (mytime < mi.crashtime / 2) {
+							var a = Math.atan2(mj.velocity.e(2), mj.velocity.e(1)) - Math.atan2(-mi.velocity.e(2), -mi.velocity.e(1));
+							if (a < 0)
+								binaryInsertionSort(eventqueue, mytime, ['start', i, j + 1, cp, mi]);
+							else
+								binaryInsertionSort(eventqueue, mytime, ['start', i, j + 0, cp, mi]);
 							if (offset < extrusion_width.value) {
 								layers[layer.value].events.push(['start', cp]);
 							}
@@ -793,28 +798,28 @@ function drawShell(offset) {
 					}
 				}
 			}
-			if (sp.motorcyclesthathitme) {
-				if (sp.motorcyclesthathitme.length) {
-					for (var k = 0; k < sp.motorcyclesthathitme.length; k++) {
-						var mcycle = sp.motorcyclesthathitme[k][1][0];
-						if (mcycle.trailcrashes.length) {
-							for (var l = 0; l < mcycle.trailcrashes.length; l++) {
-								var tce = mcycle.trailcrashes[k];
-								var time = mcycle.crashtime - tce[0];
-								var cp = tce[1];
-								var mi = tce[2];
-								var mj = tce[3];
-								if (time < mi.crashtime / 2) {
-									binaryInsertionSort(eventqueue, time, ['start', i, j, cp, mi]);
-									if (offset < extrusion_width.value) {
-										layers[layer.value].events.push(['start', cp]);
-									}
-								}
-							}
-						}
-					}
-				}
-			}
+// 			if (sp.motorcyclesthathitme) {
+// 				if (sp.motorcyclesthathitme.length) {
+// 					for (var k = 0; k < sp.motorcyclesthathitme.length; k++) {
+// 						var mcycle = sp.motorcyclesthathitme[k][1][0];
+// 						if (mcycle.trailcrashes.length) {
+// 							for (var l = 0; l < mcycle.trailcrashes.length; l++) {
+// 								var tce = mcycle.trailcrashes[k];
+// 								var time = mcycle.crashtime - tce[0];
+// 								var cp = tce[1];
+// 								var mi = tce[2];
+// 								var mj = tce[3];
+// 								if (time < mi.crashtime / 2) {
+// 									binaryInsertionSort(eventqueue, time, ['start', i, j, cp, mi]);
+// 									if (offset < extrusion_width.value) {
+// 										layers[layer.value].events.push(['start', cp]);
+// 									}
+// 								}
+// 							}
+// 						}
+// 					}
+// 				}
+// 			}
 		}
 	}
 	// TODO: process event queue
@@ -834,8 +839,36 @@ function drawShell(offset) {
 			var cp = event[3].dup();
 			var mi = event[4];
 			var mj = event[5];
-			cp = cp.add(mi.velocity.multiply(-1).multiply(time));
-			cp.bisector = mi.velocity.multiply(-1);
+// 			cp = cp.add(mi.velocity.multiply(-1).multiply(time));
+// 			var p0 = shellpaths[i][j]; p0 = p0.add(p0.bisector.multiply(time - p0.starttime));
+// 			var p1 = cp;
+// 			var p2 = shellpaths[i][j % shellpaths[i].length]; p2 = p2.add(p2.bisector.multiply(time - p2.starttime));
+// 			var s0 = p1.subtract(p0);
+// 			var s1 = p2.subtract(p1);
+// 			var a = Math.atan2(s1.e(2), s1.e(1)) - Math.atan2(-s0.e(2), -s0.e(1));
+// 			if (a < 0) a += Math.PI * 2;
+// 			var n0 = s0.to3D().cross($V([0, 0, 1])).toUnitVector();
+// 			var n1 = s1.to3D().cross($V([0, 0, 1])).toUnitVector();
+// 			var bisector = n0.add(n1).toUnitVector().multiply(1 / Math.sin(a / 2));
+// 			bisector.elements.length = cp.elements.length;
+// 			cp.bisector = bisector;
+			var p0 = shellpaths[i][(j + shellpaths[i].length - 1) % shellpaths[i].length];
+			var p1 = shellpaths[i][j % shellpaths[i].length];
+			var p2 = p0.add(p0.bisector);
+			var p3 = p1.add(p1.bisector);
+			var l0 = $L(p0, p1.subtract(p0));
+			var l1 = $L(p2, p3.subtract(p2));
+			var ml = $L(mi, mi.velocity);
+			var x0 = l0.intersectionWith(ml);
+			var x1 = l1.intersectionWith(ml);
+			cp.bisector = x1.subtract(x0);
+// 			var evnt = ['debug', cp.dup(), [
+// 				[p0.e(1), p0.e(2), p1.e(1), p1.e(2)],
+// // 				[cp.e(1), cp.e(2), mi.e(1), mi.e(2)]
+// 			]];
+// 			layers[layer.value].events.push(evnt);
+			cp.bisector.elements.length = cp.elements.length;
+// 			cp.bisector = mi.velocity.toUnitVector().multiply(-1 / Math.abs(Math.cos(a)));
 			cp.motorcycle = mi;
 			cp.a = undefined;
 			cp.motorcyclesthathitme = [];
@@ -858,8 +891,9 @@ function drawShell(offset) {
 				path[j].bisector = p.bisector;
 				if (p.insertAfter && p.insertAfter.length) {
 					for (var k = 0; k < p.insertAfter.length; k++) {
-						path.splice(j + 1 + k, 0, p.insertAfter[k]);
+						path.splice(j + k, 0, p.insertAfter[k]);
 					}
+					j -= 2;
 				}
 			}
 		}
@@ -972,12 +1006,21 @@ function drawLayer(n) {
 
 	if (layers[n].events) {
 		context.save();
-			context.strokeStyle = "rgba(255, 192, 0, 1)";
-			context.lineWidth = 1.5;
+			context.strokeStyle = "rgba(255, 192, 128, 1)";
+			context.lineWidth = 2;
 			context.beginPath();
 			for (var j = 0; j < layers[n].events.length; j++) {
 				var ev = layers[n].events[j];
 				drawcross(ev[1].e(1), ev[1].e(2), 6);
+				if (ev[2]) {
+					if (ev[2].length) {
+						for (var k = 0; k < ev[2].length; k++) {
+							var l = ev[2][k];
+							context.moveTo(xscale(l[0]), yscale(l[1]));
+							context.lineTo(xscale(l[2]), yscale(l[3]));
+						}
+					}
+				}
 			}
 			context.stroke();
 		context.restore();
