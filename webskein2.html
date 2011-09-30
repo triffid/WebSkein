@@ -85,8 +85,8 @@
 <!-- 				<div class="setting"><span class="label">Segment Combine Length</span><span class="field"><input id="combine_length_txt" type="text" value="0.5" />mm</span></div> -->
 				<div class="setting"><span class="label">Mininum Segment Length</span><span class="field"><input id="min_length_txt" type="text" value="0.4" />mm</span></div>
 				<h3>Toolpath Options</h3>
-				<div class="setting"><span class="label">Width over Thickness</span><span class="field"><input id="wot_txt" type="text" value="1.6" />:1</span></div>
-				<div class="setting"><span class="label">Shell Count</span><span class="field"><input id="shell_count_txt" type="text" value="1.6" />#</span></div>
+				<div class="setting"><span class="label">Extrusion Width</span><span class="field"><input id="extrusion_width_txt" type="text" value="0.6" />mm</span></div>
+				<div class="setting"><span class="label">Shell Count</span><span class="field"><input id="shell_count_txt" type="text" value="1" />#</span></div>
 				<hr>
 				<textarea id="pointinfo" rows="12" cols="30" style="width: 100%;">blah</textarea>
 			</div>
@@ -123,7 +123,7 @@
 			var collinear_angle = new boundValue('collinear_angle_txt', 0.1, 0);
 // 			var combine_length = new boundValue('combine_length_txt', 0.5, 0);
 			var min_length = new boundValue('min_length_txt', 0.4, 0);
-			var wot = new boundValue('wot_txt', 1.6, 0.2);
+			var extrusion_width = new boundValue('extrusion_width_txt', 0.6, 0.1);
 			var shell_count = new boundValue('shell_count_txt', 1, 1, undefined, true);
 
 			Object.extend(Event, {
@@ -295,7 +295,7 @@
 					",sca=" + collinear_angle.value +
 // 					",scl=" + combine_length.value +
 					",msl=" + min_length.value +
-					",wot=" + wot.value +
+					",ew=" + extrusion_width.value +
 					",ns=" + shell_count.value +
 					"";
 			}
@@ -337,9 +337,9 @@
 					if (msl)
 						min_length.set(msl[1]);
 
-					var wotr = window.location.hash.match(/wot=(-?[\d\.]+)/i);
-					if (wotr)
-						wot.set(wotr[1]);
+					var ew = window.location.hash.match(/ew=(-?[\d\.]+)/i);
+					if (ew)
+						extrusion_width.set(ew[1]);
 
 					var ns = window.location.hash.match(/ns=(-?[\d\.]+)/i);
 					if (ns)

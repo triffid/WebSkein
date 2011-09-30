@@ -1,13 +1,63 @@
-/*
-	a point is a vector
-	a normal is a vector
-	a plane has one 3d point and a 3d normal
-	a segment has two 2d (end)points and a 2d normal
-	a triangle has three 3d points and a 3d normal
-	a segment is created by intersecting a triangle with a plane
-	a path is a list of points
-	a layer has multiple paths
-*/
+/***************************************************************************\
+ *                                                                          *
+ * WEBSKEIN - Convert 3D model to toolpath for 3D printing                  *
+ *                                                                          *
+ * Process:                                                                 *
+ *                                                                          *
+ * 1) load STL                                                              *
+ * 2) find bounding box and number of layers [ceil(Z height / layer height)]*
+ * 3) create plane parallel to XY at (layer_num * layer_height +            *
+ *                                    [layer_height * 0.5])                 *
+ * 4) find intersections between all triangles and this plane               *
+ * 5) assemble segments into closed paths, preserving normal orientations   *
+ * 6) find Motorcycle graph                                                 *
+ * 7) find Straight Skeleton                                                *
+ * 8) use straight skeleton to draw perimeters                              *
+ * 9) use straight skeleton to draw a clipping region for infill            *
+ * 10) draw infill                                                          *
+ * 11) layer_num++; goto 3 unless layer_num >= layer_count                  *
+ *                                                                          *
+ * About the Motorcycle Graph:                                              *
+ *                                                                          *
+ * Please see Stefan Hubert's excellent works at                            *
+ *   http://www.cosy.sbg.ac.at/~shuber/research/#publications for a full    *
+ *   description.                                                           *
+ *                                                                          *
+ * The Motorcycle graph is found by creating a motorcycle at each reflex    *
+ *   vertex with a velocity equal to the vertex's bisector.                 *
+ * A reflex vertex is a vertex where the angle between the two adjacent     *
+ *   segments on the inside is greater than 180 degrees. These vertices can *
+ *   split a polygon into two if they meet another segment coming the other *
+ * way.                                                                     *
+ * The bisector is formed by moving both segments towards the inside of the *
+ *   polygon by 1 unit and finding their intersection. This can also be     *
+ *   calculated by adding the segment normals and scaling the resulting     *
+ *   vector to length [1 / sin(a / 2)].                                     *
+ * A motorcycle crashes when it intersects a segment, or the track of       *
+ *   another motorcycle, or another motorcycle.                             *
+ * We first find intersections with all the segments, then build a priority *
+ *   queue of potential motorcycle intersections. We run through this queue *
+ *   in order of time such that we discover the actual order of events, and *
+ *   which potential intersections never occur due to motorcycles involved  *
+ *   crashing earlier.                                                      *
+ * This graph hugely speeds up the straight skeleton calculation.           *
+ *                                                                          *
+ * About the Straight Skeleton:                                             *
+ *                                                                          *
+ * Please see Stefan Hubert's excellent works at                            *
+ *   http://www.cosy.sbg.ac.at/~shuber/research/#publications and the       *
+ *   writings of "twak" at http://twak.blogspot.com for a full description. *
+ *                                                                          *
+ * The straight skeleton is a graph that allows us to offset the sliced     *
+ *   polygon, holes and all, so we can correctly place perimeters, extra    *
+ *   shells, and the clipping border for the infill pattern. It describes   *
+ *   topological changes in the polygon as it grows or shrinks, such as     *
+ *   edge segments reaching zero length, or reflex vertexes splitting a     *
+ *   polygon into two.                                                      *
+ * It can also be visualised as the process of raising a 3D "roof" over a   *
+ *   wall layout given by the polygon where all faces lie at 45 degrees to  *
+ *   the horizontal.                                                        *
+\***************************************************************************/
 
 var canvas;
 var viewer;
@@ -18,8 +68,6 @@ var lines = [];
 var boundingBox = [];
 
 var sliceTimer;
-
-var extrusionWidth = 0.5;
 
 // for sliceview
 var modelWidth = 0;
@@ -51,6 +99,16 @@ function wscale_invert(w) {
 	return linearInterpolate(w, 0, skeincanvas.drawright - skeincanvas.drawleft, 0, (boundingBox[1].e(1) / skeincanvas.scaleF) - (boundingBox[0].e(1) / skeincanvas.scaleF));
 }
 
+function round(n,dec) {
+	n = parseFloat(n);
+	if(!isNaN(n)){
+		if(!dec) var dec= 0;
+		var factor= Math.pow(10,dec);
+		return Math.floor(n*factor+((n*factor*10)%10>=5?1:0))/factor;
+	}else{
+		return n;
+	}
+}
 
 function canvasInit() {
 	canvas = $('stlview');
@@ -177,9 +235,6 @@ function calcLayers() {
 
 	layer_count.set(count);
 	layer.setMax(count);
-
-	// equivalent to skeinforge WoT
-	extrusionWidth = layer_height.value * wot.value;
 }
 
 // read the list of triangles from jsc3d
@@ -266,7 +321,7 @@ function sliceLayer() {
 		if (arguments[0]) {
 			fudgeFactor = parseFloat(arguments[0]);
 			if (fudgeFactor > (layer_height.value / 2)) {
-				debugWrite("layer offset too high, can't slice this model! aborting.\n");
+				debugWrite("layer offset too high, can't slice this model! aborting.\nUsually this indicates an inside-out or non-manifold STL, try feeding it to http://cloud.netfabb.com/\n");
 				throw "layer offset too high at Z=" + ((layer_height.value * layer.value) + (layer_height.value * 0.5) + boundingBox[0].e(3)) + " + fudge " + fudgeFactor + ", layer height " + layer_height.value;
 			}
 		}
@@ -336,7 +391,16 @@ function sliceLayer() {
 
 		debugWrite(' (' + lines.length + ' segments)');
 
+		layers[layer.value] = { outline: [], motorcycles: [], shells: [], events: [] };
+
 		lines_to_paths(lines, fudgeFactor);
+		findMotorcycle();
+
+		for (var offset = extrusion_width.value / 2; offset < extrusion_width.value * shell_count.value; offset += extrusion_width.value) {
+			debugWrite(" [shell at " + round(offset, 2));
+			drawShell(offset);
+			debugWrite("]");
+		}
 
 		debugWrite(' OK\n');
 	}
@@ -407,7 +471,10 @@ function lines_to_paths(lines, fudge) {
 						}
 
 						if (path.length > 3) {
-							for (i = 0; i < path.length; i++) {
+							i = 0;
+							while (i < path.length) {
+							// for loop doesn't like letting i be -1
+							//for (i = 0; i < path.length; i++) {
 								var p0 = path[(i + path.length - 1) % path.length];
 								var p1 = path[i];
 								var p2 = path[(i + 1) % path.length];
@@ -421,18 +488,25 @@ function lines_to_paths(lines, fudge) {
 									) {
 									path.splice(i, 1);
 									i -= 2;
-									if (i < 0) i = 0;
+									if (i < -1) i = -1;
 								}
 								else {
 									var n0 = s0.to3D().cross($V([0, 0, 1])).toUnitVector();
 									var n1 = s1.to3D().cross($V([0, 0, 1])).toUnitVector();
 									var bisector = n0.add(n1).toUnitVector().multiply(1 / Math.sin(a / 2));
+									bisector.elements.length = p0.elements.length;
 									path[i].a = a;
 									path[i].bisector = bisector;
+									path[i].motorcycle = undefined;
+									path[i].motorcyclesthathitme = [];
+									path[i].starttime = 0;
 								}
+								i++;
 							}
-							paths.push(path.slice(0, path.length));
-							debugWrite(" (" + paths.length + " paths)");
+							if (path.length > 2) {
+								paths.push(path.slice(0, path.length));
+								debugWrite(" (" + paths.length + " paths)");
+							}
 							if (lines.length) {
 								cl = lines.splice(0, 1)[0];
 								path = [cl[0]];
@@ -461,7 +535,7 @@ function lines_to_paths(lines, fudge) {
 
 	if (lines.length) {
 		fudge += layer_height.value * 0.01;
-		debugWrite(" " + lines.length + ' lines found without a closed path! Trying reslice with layer offset +' + fudge + '... ');
+		debugWrite(" " + lines.length + ' segments found without a closed path! Trying reslice with layer offset +' + round(fudge, 9) + '... ');
 		return sliceLayer(fudge);
 	}
 
@@ -484,20 +558,12 @@ function lines_to_paths(lines, fudge) {
 	catch (e) {
 	}
 
-	layers[layer.value] = { outline: paths, motorcycles: [], shells: [] };
-
-	findMotorcycle();
-//
-// 	for (var i = 0; i < shell_count.value; i++) {
-// 		debugWrite(" (" + (i + 1) + " shells");
-// 		skeinShell(i);
-// 		debugWrite(")");
-// 	}
+	layers[layer.value].outline = paths;
 }
 
 function findMotorcycle() {
 	var i;
-	var points = [];
+// 	var points = [];
 	var motorcycles = [];
 	var outline = layers[layer.value].outline;
 
@@ -517,33 +583,49 @@ function findMotorcycle() {
 				var motorcycle = $V([p.e(1), p.e(2)]);
 				motorcycle.a = p.a * 1;
 				motorcycle.velocity = $V([p.bisector.e(1), p.bisector.e(2)]);
+				motorcycle.starttime = p.starttime;
 				motorcycle.crashtime = maxtime;
 				motorcycle.seg = new Segment(motorcycle, motorcycle.add(motorcycle.velocity.multiply(motorcycle.crashtime)));
+				motorcycle.trailcrashes = [];
+				motorcycle.crashtrail = false;
+				motorcycle.crashwall = undefined;
+				motorcycle.crashpoint = undefined;
 				// now collide with walls
 				// TODO: only check relevant paths
 				for (var k = 0; k < outline.length; k++) {
 					var checkpath = outline[k];
 					for (var l = 0; l < checkpath.length; l++) {
-						var p0 = checkpath[l];
-						var p1 = checkpath[(l + 1) % checkpath.length];
-						var seg = new Segment(p0, p1);
-						var cp = seg.intersectionWith(motorcycle.seg);
-						if (cp) {
-							cp.elements.length = motorcycle.elements.length;
-							var d = motorcycle.velocity.positionAlong(cp.subtract(motorcycle));
-							if ((d > 0.0001) && (d < motorcycle.crashtime)) {
-								motorcycle.starttime = 0;
-								motorcycle.crashtime = d;
-								motorcycle.seg = new Segment(motorcycle, motorcycle.add(motorcycle.velocity.multiply(motorcycle.crashtime)));
-								binaryInsertionSort(crashqueue, d, [motorcycles.length, motorcycles.length, cp]);
+						if ((k != i) || ((l != j) && (l != ((j + path.length - 1) % path.length)))) {
+							var p0 = checkpath[l];
+							var p1 = checkpath[(l + 1) % checkpath.length];
+							var seg = new Segment(p0, p1);
+							var cp = seg.intersectionWith(motorcycle.seg);
+							if (cp) {
+								cp.elements.length = motorcycle.elements.length;
+								var d = motorcycle.velocity.positionAlong(cp.subtract(motorcycle));
+								if ((d > 0) && (d < motorcycle.crashtime)) {
+									motorcycle.starttime = 0;
+									motorcycle.crashtime = d;
+									motorcycle.crashpath = [k, l];
+									motorcycle.crashwall = p0;
+									motorcycle.crashpoint = cp;
+	// 								p0.motorcyclesthathitme.push(motorcycle);
+									// PAW - position along wall
+									var paw = p1.subtract(p0).positionAlong(cp.subtract(p0));
+									motorcycle.crashpaw = paw;
+	// 								binaryInsertionSort(p0.motorcyclesthathitme, pa, [motorcycle, cp]);
+									motorcycle.seg = new Segment(motorcycle, cp);
+									binaryInsertionSort(crashqueue, d, [motorcycles.length, motorcycles.length, cp]);
+								}
 							}
 						}
 					}
 				}
 				motorcycles.push(motorcycle);
+				p.motorcycle = motorcycle;
 			}
 
-			points.push(path[j]);
+// 			points.push(path[j]);
 		}
 	}
 
@@ -576,37 +658,213 @@ function findMotorcycle() {
 		var mcycle = [];
 		var velocity = $V([0, 0]);
 		while (crashqueue.length && (crashqueue[0][0] <= time)) {
-			var x = crashqueue.splice(0, 1);
+			var x = crashqueue.splice(0, 1)[0];
 			// motorcycle[i] crashes into motorcycle[j]'s trail at this time
-			var i = x[0][1][0];
-			var j = x[0][1][1];
-			var cp = x[0][1][2];
+			var i = x[1][0];
+			var j = x[1][1];
+			var cp = x[1][2];
 			if (motorcycles[i].crashtime > time) {
 				var mj = motorcycles[j];
 				var jt = mj.velocity.positionAlong(cp.subtract(mj));
 				if (jt < mj.crashtime)
-					mcycle.push(i);
+					mcycle.push([i, j, cp]);
 			}
 		}
 		if (mcycle.length) {
 			for (var i = 0; i < mcycle.length; i++) {
-				var m = motorcycles[mcycle[i]];
-				if (m.crashtime > time) {
-					m.crashtime = time;
-					velocity = velocity.add(m.velocity);
+				var mi = motorcycles[mcycle[i][0]];
+				var mj = motorcycles[mcycle[i][1]];
+				var cp = mcycle[i][2];
+				// mi crashes into mj's trail at point cp
+				if (mi.crashtime > time) {
+					mi.crashtime = time;
+					mi.crashtrail = true;
+					// pull us out of wallcrash list
+					for (var j = 0; j < mi.crashwall.motorcyclesthathitme.length; j++) {
+						if (mi == mi.crashwall.motorcyclesthathitme[j][1][0]) {
+							mi.crashwall.motorcyclesthathitme.splice(j, 1);
+							j = mi.crashwall.motorcyclesthathitme.length;
+						}
+					}
+					mj.trailcrashes.push([time, cp, mi, mj]);
+					velocity = velocity.add(mi.velocity);
 				}
 			}
 			if (mcycle.length > 1) {
 				// some sort of multi event, create a new motorcycle
-				velocity = velocity.multiply(1 / (motorcycles.length - 1));
+				velocity = velocity.multiply(1 / (mcycle.length - 1));
 			}
 			eventqueue.push([time, mcycle]);
+		}
+	}
+
+	// now, all motorcycles which have crashed = false have reached a wall
+	// TODO: insert new vertices as appropriate
+	// notify walls that motorcycles crash in to
+	for (var i = 0; i < motorcycles.length; i++) {
+		var mcycle = motorcycles[i];
+		if (mcycle.crashtrail == false) {
+			var k = mcycle.crashpath[0];
+			var l = mcycle.crashpath[1];
+			var time = mcycle.crashtime;
+			var cp = mcycle.crashpoint;
+			var paw = mcycle.crashpaw;
+			binaryInsertionSort(outline[k][l].motorcyclesthathitme, paw, [mcycle, time, cp]);
 		}
 	}
 
 	layers[layer.value].motorcycleeventqueue = eventqueue;
 
 	layers[layer.value].motorcycles = motorcycles;
+}
+
+function drawShell(offset) {
+	var time = 0;
+	var eventqueue = [];
+	var maxtime = Math.max(boundingBox[1].e(1) - boundingBox[0].e(1), boundingBox[1].e(2) - boundingBox[0].e(2));
+	var paths = layers[layer.value].outline;
+	var shellpaths = [];
+	// copy points, creating new points where motorcycles hit the wall
+	for (var i = 0; i < paths.length; i++) {
+		var path = paths[i];
+		shellpaths.push([]);
+		for (var j = 0; j < path.length; j++) {
+			var p0 = path[j];
+			// explicit duplication into shellpaths
+			var sp = $V([p0.e(1), p0.e(2)]);
+			sp.a = p0.a * 1.0;
+			sp.starttime = p0.starttime * 1;
+			sp.bisector = p0.bisector.dup();
+			sp.motorcycle = p0.motorcycle;
+			sp.motorcyclesthathitme = p0.motorcyclesthathitme;
+			sp.insertAfter = [];
+			shellpaths[i].push(sp);
+			if (sp.motorcyclesthathitme.length) {
+				for (var k = 0; k < sp.motorcyclesthathitme.length; k++) {
+					var time = sp.motorcyclesthathitme[k][1][1];
+					var mcycle = sp.motorcyclesthathitme[k][1][0];
+					var cp = sp.motorcyclesthathitme[k][1][2].dup();
+					cp.bisector = mcycle.velocity.multiply(-1);
+					cp.starttime = 0;
+					cp.motorcycle = mcycle;
+					cp.motorcyclesthathitme = [];
+					cp.insertAfter = [];
+					shellpaths[i].push(cp);
+				}
+			}
+		}
+	}
+	// fill event queue
+	for (var i = 0; i < shellpaths.length; i++) {
+		var path = shellpaths[i];
+		for (var j = 0; j < path.length; j++) {
+			var sp = path[j];
+			var p1 = path[(j + 1) % path.length];
+			var b0 = sp.bisector;
+			var b1 = p1.bisector;
+			var s0 = new Segment(sp, sp.add(b0.multiply(maxtime)));
+			var s1 = new Segment(p1, p1.add(b1.multiply(maxtime)));
+			var cp = s0.intersectionWith(s1);
+			if (cp) {
+				cp.elements.length = p0.elements.length;
+				// edge event at cp
+				// we can use either bisector to find time- due to the geometry of their creation, our cp should occur at the same time given each bisector's speed.
+				var eventtime = b0.positionAlong(cp.subtract(p0));
+				if ((eventtime > 0) && (eventtime <= offset)) {
+					sp.deathtime = eventtime;
+					binaryInsertionSort(eventqueue, eventtime, ['edge', i, j]);
+				}
+			}
+			// TODO: search our motorcycle for other motorcycle events
+			if (sp.motorcycle) {
+				if (sp.motorcycle.trailcrashes && sp.motorcycle.trailcrashes.length) {
+					for (var k = sp.motorcycle.trailcrashes.length - 1; k >= 0; k--) {
+						var tce = sp.motorcycle.trailcrashes[k];
+						var time = tce[0];
+						var cp = tce[1];
+						var mi = tce[2];
+						var mj = tce[3];
+						if (time < mi.crashtime / 2) {
+							binaryInsertionSort(eventqueue, time, ['start', i, j, cp, mi]);
+							if (offset < extrusion_width.value) {
+								layers[layer.value].events.push(['start', cp]);
+							}
+						}
+					}
+				}
+			}
+			if (sp.motorcyclesthathitme) {
+				if (sp.motorcyclesthathitme.length) {
+					for (var k = 0; k < sp.motorcyclesthathitme.length; k++) {
+						var mcycle = sp.motorcyclesthathitme[k][1][0];
+						if (mcycle.trailcrashes.length) {
+							for (var l = 0; l < mcycle.trailcrashes.length; l++) {
+								var tce = mcycle.trailcrashes[k];
+								var time = mcycle.crashtime - tce[0];
+								var cp = tce[1];
+								var mi = tce[2];
+								var mj = tce[3];
+								if (time < mi.crashtime / 2) {
+									binaryInsertionSort(eventqueue, time, ['start', i, j, cp, mi]);
+									if (offset < extrusion_width.value) {
+										layers[layer.value].events.push(['start', cp]);
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	// TODO: process event queue
+	while (eventqueue.length && eventqueue[0][0] <= offset) {
+		var time = eventqueue[0][0];
+		var event = eventqueue[0][1];
+		eventqueue.splice(0, 1);
+		if (event[0] == 'edge') {
+			// delete edge
+			//shellpaths[event[1]].splice(event[2], 1);
+			shellpaths[event[1]][event[2]].deleted = 1;
+			debugWrite(" [edge:" + event[1] + ":" + event[2] + "]");
+		}
+		else if (event[0] == 'start') {
+			var i = event[1];
+			var j = event[2];
+			var cp = event[3].dup();
+			var mi = event[4];
+			var mj = event[5];
+			cp = cp.add(mi.velocity.multiply(-1).multiply(time));
+			cp.bisector = mi.velocity.multiply(-1);
+			cp.motorcycle = mi;
+			cp.a = undefined;
+			cp.motorcyclesthathitme = [];
+			cp.starttime = time;
+			cp.insertAfter = [];
+			shellpaths[i][j].insertAfter.push(cp);
+		}
+	}
+	for (var i = 0; i < shellpaths.length; i++) {
+		var path = shellpaths[i];
+		for (var j = 0; j < path.length; j++) {
+			var p = path[j];
+			if (p.deleted) {
+				path.splice(j, 1);
+				j -= 1;
+			}
+			else {
+				path[j] = p.add(p.bisector.multiply(offset - p.starttime));
+				path[j].starttime = offset;
+				path[j].bisector = p.bisector;
+				if (p.insertAfter && p.insertAfter.length) {
+					for (var k = 0; k < p.insertAfter.length; k++) {
+						path.splice(j + 1 + k, 0, p.insertAfter[k]);
+					}
+				}
+			}
+		}
+	}
+	binaryInsertionSort(layers[layer.value].shells, offset, shellpaths);
 }
 
 function drawLayer(n) {
@@ -654,10 +912,10 @@ function drawLayer(n) {
 	}
 	if (shells) {
 		for (var j = 0; j < shells.length; j++) {
-			var shell = shells[j];
+			var shell = shells[j][1];
 			for (var i = 0; i < shell.length; i++) {
 				var path = shell[i];
-				drawPath(path, colours[(j % (colours.length - 2)) + 1], wscale(extrusionWidth));
+				drawPath(path, colours[(j % (colours.length - 2)) + 1], wscale(extrusion_width.value));
 			}
 		}
 	}
@@ -681,17 +939,47 @@ function drawLayer(n) {
 	}
 	if (motorcycles) {
 		context.save();
-		context.lineWidth = 1;
-		context.strokeStyle = "rgba(0, 0, 255, 0.3)";
-		context.beginPath();
-		for (var j = 0; j < motorcycles.length; j++) {
-			var m = motorcycles[j];
-			var cp = m.add(m.velocity.multiply(m.crashtime));
-			context.moveTo(xscale(m.e(1)), yscale(m.e(2)));
-			context.lineTo(xscale(cp.e(1)), yscale(cp.e(2)));
-			drawcross(cp.e(1), cp.e(2));
-		}
-		context.stroke();
+			context.lineWidth = 1;
+			context.strokeStyle = "rgba(0, 0, 255, 0.3)";
+			context.beginPath();
+			for (var j = 0; j < motorcycles.length; j++) {
+				var m = motorcycles[j];
+				var cp = m.add(m.velocity.multiply(m.crashtime));
+				context.moveTo(xscale(m.e(1)), yscale(m.e(2)));
+				context.lineTo(xscale(cp.e(1)), yscale(cp.e(2)));
+				if (m.crashtrail == false)
+					drawcross(cp.e(1), cp.e(2));
+			}
+			context.stroke();
+		context.restore();
+		context.save();
+			context.strokeStyle = "rgba(255, 0, 0, 0.3)";
+			context.beginPath();
+			for (var j = 0; j < motorcycles.length; j++) {
+				var m = motorcycles[j];
+				if (m.trailcrashes) {
+					for (var k = 0; k < m.trailcrashes.length; k++) {
+						var tc = m.trailcrashes[k];
+						var time = tc[0];
+						var cpt = tc[1];
+						drawcross(cpt.e(1), cpt.e(2));
+					}
+				}
+			}
+			context.stroke();
+		context.restore();
+	}
+
+	if (layers[n].events) {
+		context.save();
+			context.strokeStyle = "rgba(255, 192, 0, 1)";
+			context.lineWidth = 1.5;
+			context.beginPath();
+			for (var j = 0; j < layers[n].events.length; j++) {
+				var ev = layers[n].events[j];
+				drawcross(ev[1].e(1), ev[1].e(2), 6);
+			}
+			context.stroke();
 		context.restore();
 	}
 
@@ -852,7 +1140,7 @@ function pointInfo(x, y) {
 			}
 		}
 		for (i = 0; i < shells.length; i++) {
-			var shellpaths = shells[i];
+			var shellpaths = shells[i][1];
 			for (var j = 0; j < shellpaths.length; j++) {
 				var cpath = shellpaths[j];
 				for (var k = 0; k < cpath.length; k++) {
